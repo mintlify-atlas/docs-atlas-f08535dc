@@ -1,0 +1,226 @@
+---
+title: Creating particle systems
+description: Learn how to create and configure particle systems with Phenomenon
+---
+
+Particle systems in Phenomenon are created by adding instances to the renderer. Each instance represents a collection of particles that share the same geometry, shaders, and attributes.
+
+## Basic particle system
+
+<Steps>
+  <Step title="Create the renderer">
+    Initialize Phenomenon with your desired settings. The renderer manages all particle instances and handles the render loop.
+
+    ```javascript
+    import Phenomenon from 'phenomenon';
+
+    const phenomenon = new Phenomenon({
+      settings: {
+        devicePixelRatio: 1,
+        position: { x: 0, y: 0, z: 3 },
+      },
+    });
+    ```
+
+    <Note>
+      The `position` property controls the camera position. Higher `z` values move the camera further away from the scene.
+    </Note>
+  </Step>
+
+  <Step title="Define your attributes">
+    Attributes are data passed to each particle. Every attribute needs a name (used in shaders), size (number of values), and a data function that returns values for each particle.
+
+    ```javascript
+    const attributes = [
+      {
+        name: 'aPositionStart',
+        data: () => [
+          start.x + getRandom(0.1),
+          start.y + getRandom(0.1),
+          start.z + getRandom(0.1)
+        ],
+        size: 3,
+      },
+      {
+        name: 'aColor',
+        data: () => [0.32, 0.43, 0.99],
+        size: 3,
+      },
+      {
+        name: 'aOffset',
+        data: i => [i * ((1 - duration) / (multiplier - 1))],
+        size: 1,
+      },
+    ];
+    ```
+
+    <Tip>
+      The `data` function receives the particle index `i` as its first parameter, allowing you to create unique values for each particle.
+    </Tip>
+  </Step>
+
+  <Step title="Set up uniforms">
+    Uniforms are values that remain constant across all particles during a single render, but can be updated between frames.
+
+    ```javascript
+    const uniforms = {
+      uProgress: {
+        type: 'float',
+        value: 0.0,
+      },
+    };
+    ```
+
+    <Note>
+      Supported uniform types: `float`, `vec2`, `vec3`, `vec4`, `mat2`, `mat3`, `mat4`
+    </Note>
+  </Step>
+
+  <Step title="Write your shaders">
+    The vertex shader positions particles in 3D space, while the fragment shader determines their color.
+
+    ```glsl
+    const vertex = `
+      attribute vec3 aPositionStart;
+      attribute vec3 aPosition;
+      attribute vec3 aColor;
+
+      uniform float uProgress;
+      uniform mat4 uProjectionMatrix;
+      uniform mat4 uModelMatrix;
+      uniform mat4 uViewMatrix;
+
+      varying vec3 vColor;
+
+      void main(){
+        gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(aPositionStart + aPosition, 1.0);
+        gl_PointSize = 1.0;
+        vColor = aColor;
+      }
+    `;
+
+    const fragment = `
+      precision mediump float;
+
+      varying vec3 vColor;
+
+      void main(){
+        gl_FragColor = vec4(vColor, 1.0);
+      }
+    `;
+    ```
+
+    <Warning>
+      Always declare `precision mediump float;` in your fragment shader to ensure consistent behavior across devices.
+    </Warning>
+  </Step>
+
+  <Step title="Add the instance">
+    Combine everything and add it to the renderer. The multiplier determines how many particles will be created.
+
+    ```javascript
+    phenomenon.add('particles', {
+      attributes,
+      multiplier: 4000,
+      vertex,
+      fragment,
+      uniforms,
+    });
+    ```
+  </Step>
+</Steps>
+
+## Animating particles
+
+Use the `onRender` hook to update uniforms and animate your particles on every frame.
+
+```javascript
+phenomenon.add('animatedParticles', {
+  attributes,
+  multiplier: 4000,
+  vertex,
+  fragment,
+  uniforms,
+  onRender: instance => {
+    const { uProgress } = instance.uniforms;
+    uProgress.value += 0.01;
+
+    if (uProgress.value >= 1) {
+      uProgress.value = 0;
+    }
+  },
+});
+```
+
+<Tip>
+  The `onRender` hook receives the instance as its parameter, giving you access to all instance properties including uniforms and attributes.
+</Tip>
+
+## Understanding the multiplier
+
+The multiplier creates duplicate copies of your geometry with different attribute values. This is far more efficient than creating separate instances.
+
+```javascript
+// GOOD: One instance with high multiplier
+phenomenon.add('particles', {
+  multiplier: 10000,
+  // ... other settings
+});
+
+// BAD: Multiple instances with low multipliers
+for (let i = 0; i < 100; i++) {
+  phenomenon.add(`particles-${i}`, {
+    multiplier: 100,
+    // ... other settings
+  });
+}
+```
+
+<Note>
+  Less instances with higher multipliers will always perform better than more instances with lower multipliers. See the [performance guide](/guides/performance) for details.
+</Note>
+
+## Using geometry
+
+By default, particles are rendered as points (mode 0). You can also render custom geometry by providing vertices.
+
+```javascript
+phenomenon.add('triangles', {
+  geometry: {
+    vertices: [
+      { x: 0, y: 0.5, z: 0 },
+      { x: -0.5, y: -0.5, z: 0 },
+      { x: 0.5, y: -0.5, z: 0 },
+    ],
+  },
+  mode: 4, // gl.TRIANGLES
+  multiplier: 1000,
+  // ... other settings
+});
+```
+
+<Tip>
+  When you provide geometry vertices, Phenomenon automatically creates an `aPosition` attribute that you can use in your vertex shader.
+</Tip>
+
+## Common pitfalls
+
+<Accordion title="Particles not visible">
+  Check these common issues:
+  - Verify the camera position (z value) is appropriate for your scene
+  - Ensure `gl_PointSize` is set to a visible value (at least 1.0)
+  - Confirm particle positions are within the clip range (default: 0.001 to 100)
+  - Check that your fragment shader sets `gl_FragColor`
+</Accordion>
+
+<Accordion title="Poor performance">
+  - Reduce the multiplier value
+  - Set `devicePixelRatio` to 1 instead of `window.devicePixelRatio`
+  - Disable antialiasing in context settings
+  - Use fewer or simpler attributes
+  - See the [performance guide](/guides/performance) for optimization strategies
+</Accordion>
+
+<Accordion title="Attributes not updating">
+  Attributes are set once during initialization. To update them, you need to use `prepareAttribute()` or `prepareBuffer()`. See the [dynamic attributes guide](/guides/dynamic-attributes).
+</Accordion>

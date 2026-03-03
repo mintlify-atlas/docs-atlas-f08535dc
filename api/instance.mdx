@@ -1,0 +1,321 @@
+---
+title: Instance
+description: Complete API reference for the Instance class
+---
+
+The `Instance` class represents a single particle system with its own shaders, geometry, and attributes. You don't instantiate this class directly—it's created by calling [`renderer.add()`](/api/renderer#add).
+
+## Instance Settings
+
+When you call `renderer.add()`, you pass an `InstanceProps` object that configures the particle instance.
+
+### vertex
+
+<ParamField path="vertex" type="string">
+  GLSL vertex shader source code. This shader determines the position and appearance of each particle.
+</ParamField>
+
+#### Example
+
+```glsl
+attribute vec3 aPosition;
+attribute vec3 aOffset;
+uniform mat4 uProjectionMatrix;
+uniform mat4 uModelMatrix;
+uniform mat4 uViewMatrix;
+
+void main() {
+  vec3 position = aPosition + aOffset;
+  gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(position, 1.0);
+  gl_PointSize = 2.0;
+}
+```
+
+### fragment
+
+<ParamField path="fragment" type="string">
+  GLSL fragment shader source code. This shader determines the color of each particle.
+</ParamField>
+
+#### Example
+
+```glsl
+precision mediump float;
+
+void main() {
+  gl_FragColor = vec4(1.0, 0.5, 0.0, 1.0);
+}
+```
+
+### uniforms
+
+<ParamField path="uniforms" type="{ [key: string]: UniformProps }" required>
+  Custom uniforms to pass to the shaders. The renderer automatically provides `uProjectionMatrix`, `uModelMatrix`, and `uViewMatrix`.
+</ParamField>
+
+#### Example
+
+```javascript
+uniforms: {
+  uTime: {
+    type: 'float',
+    value: [0],
+  },
+  uColor: {
+    type: 'vec3',
+    value: [1, 0.5, 0],
+  },
+}
+```
+
+### attributes
+
+<ParamField path="attributes" type="AttributeProps[]" default="[]">
+  Custom vertex attributes. Each attribute defines data that varies per particle.
+</ParamField>
+
+Each attribute has these properties:
+
+<ParamField path="name" type="string" required>
+  The attribute name used in the vertex shader (e.g., `aOffset`, `aVelocity`).
+</ParamField>
+
+<ParamField path="size" type="number" required>
+  Number of components per vertex (1 for float, 2 for vec2, 3 for vec3, 4 for vec4).
+</ParamField>
+
+<ParamField path="data" type="(index: number, total: number) => number[]">
+  Function that returns the attribute data for each particle. Called once per particle during initialization.
+</ParamField>
+
+#### Example
+
+```javascript
+attributes: [
+  {
+    name: 'aOffset',
+    size: 3,
+    data: (i, total) => [
+      Math.random() * 2 - 1,
+      Math.random() * 2 - 1,
+      Math.random() * 2 - 1,
+    ],
+  },
+  {
+    name: 'aVelocity',
+    size: 3,
+    data: (i, total) => [
+      (Math.random() - 0.5) * 0.01,
+      (Math.random() - 0.5) * 0.01,
+      (Math.random() - 0.5) * 0.01,
+    ],
+  },
+]
+```
+
+### geometry
+
+<ParamField path="geometry" type="GeometryProps" default="{ vertices: [{ x: 0, y: 0, z: 0 }] }">
+  The base geometry for each particle. By default, each particle is a single point at the origin.
+</ParamField>
+
+<ParamField path="vertices" type="Array<{ x: number; y: number; z: number }>">
+  Array of vertex positions. Each particle instance uses this geometry.
+</ParamField>
+
+<ParamField path="normal" type="Array<{ x: number; y: number; z: number }>">
+  Array of vertex normals. If provided, an `aNormal` attribute is automatically created.
+</ParamField>
+
+#### Example
+
+```javascript
+// Single point (default)
+geometry: {
+  vertices: [{ x: 0, y: 0, z: 0 }],
+}
+
+// Triangle
+geometry: {
+  vertices: [
+    { x: 0, y: 0.1, z: 0 },
+    { x: -0.1, y: -0.1, z: 0 },
+    { x: 0.1, y: -0.1, z: 0 },
+  ],
+}
+```
+
+### multiplier
+
+<ParamField path="multiplier" type="number" default="1">
+  Number of times to repeat the geometry. This is how you create multiple particles—each particle gets its own copy of the geometry.
+</ParamField>
+
+#### Example
+
+```javascript
+// Create 10,000 particles
+multiplier: 10000
+```
+
+### mode
+
+<ParamField path="mode" type="number" default="0">
+  WebGL drawing mode. Use `0` for `POINTS`, `4` for `TRIANGLES`, `5` for `TRIANGLE_STRIP`, etc.
+</ParamField>
+
+#### Example
+
+```javascript
+// Points (default)
+mode: 0
+
+// Triangles
+mode: 4
+```
+
+### modifiers
+
+<ParamField path="modifiers" type="{ [attributeName: string]: (data: any, vertexIndex: number, component: number, instance: Instance) => number }">
+  Functions that modify attribute values during buffer creation. Each modifier receives the attribute's data and returns a modified value.
+</ParamField>
+
+#### Example
+
+```javascript
+modifiers: {
+  aOffset: (data, i, j, instance) => {
+    // Arrange particles in a grid
+    const size = Math.sqrt(instance.multiplier);
+    if (j === 0) return (i % size) * 0.1 - (size * 0.05);
+    if (j === 1) return Math.floor(i / size) * 0.1 - (size * 0.05);
+    return 0;
+  },
+}
+```
+
+## Methods
+
+These methods are available on Instance objects, but you typically don't call them directly.
+
+### prepareAttribute()
+
+Prepares a single attribute by generating its buffer data.
+
+```typescript
+prepareAttribute(attribute: AttributeProps): void
+```
+
+<ParamField path="attribute" type="AttributeProps" required>
+  The attribute to prepare with `name`, `size`, and optional `data` function.
+</ParamField>
+
+This method:
+1. Creates a `Float32Array` buffer sized for all particles
+2. Calls the attribute's `data` function for each particle
+3. Applies any modifiers for the attribute
+4. Stores the buffer data on the attribute
+5. Calls `prepareBuffer()` to upload to GPU
+
+### prepareBuffer()
+
+Creates a WebGL buffer and uploads attribute data to the GPU.
+
+```typescript
+prepareBuffer(attribute: AttributeProps): void
+```
+
+<ParamField path="attribute" type="AttributeProps" required>
+  The attribute with prepared data to upload.
+</ParamField>
+
+### render()
+
+Renders the instance for a single frame.
+
+```typescript
+render(renderUniforms: object): void
+```
+
+<ParamField path="renderUniforms" type="object" required>
+  Shared uniforms from the renderer (projection, view, and model matrices).
+</ParamField>
+
+This method:
+1. Activates the instance's shader program
+2. Binds all vertex attribute buffers
+3. Updates all uniforms (shared and instance-specific)
+4. Calls `gl.drawArrays()` to render
+5. Invokes the `onRender` callback if defined
+
+### destroy()
+
+Cleans up WebGL resources for this instance.
+
+```typescript
+destroy(): void
+```
+
+This method:
+1. Deletes all vertex buffers
+2. Deletes the shader program
+3. Nullifies the WebGL context reference
+
+## Properties
+
+Instance objects expose these public properties:
+
+<ResponseField name="gl" type="WebGLRenderingContext">
+  The WebGL rendering context.
+</ResponseField>
+
+<ResponseField name="program" type="WebGLProgram">
+  The compiled and linked shader program.
+</ResponseField>
+
+<ResponseField name="uniforms" type="{ [key: string]: UniformProps }">
+  All uniforms for this instance, including shared renderer uniforms.
+</ResponseField>
+
+<ResponseField name="attributes" type="AttributeProps[]">
+  All vertex attributes with their buffer data.
+</ResponseField>
+
+<ResponseField name="buffers" type="BufferProps[]">
+  WebGL buffer objects for each attribute.
+</ResponseField>
+
+<ResponseField name="geometry" type="GeometryProps">
+  The base geometry configuration.
+</ResponseField>
+
+<ResponseField name="multiplier" type="number">
+  Number of particles (geometry instances).
+</ResponseField>
+
+<ResponseField name="mode" type="number">
+  WebGL drawing mode.
+</ResponseField>
+
+<ResponseField name="onRender" type="(instance: Instance) => void">
+  Optional callback invoked after each render. Use this to update uniforms or perform per-frame calculations.
+</ResponseField>
+
+### Example: Updating Uniforms
+
+```javascript
+const instance = renderer.add('particles', {
+  // ... other settings
+  uniforms: {
+    uTime: {
+      type: 'float',
+      value: [0],
+    },
+  },
+});
+
+// Update uniforms each frame
+instance.onRender = (instance) => {
+  instance.uniforms.uTime.value[0] += 0.01;
+};
+```

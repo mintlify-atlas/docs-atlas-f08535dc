@@ -1,0 +1,121 @@
+---
+title: Installation
+description: Install Phenomenon using npm, yarn, pnpm, or CDN
+---
+
+# Installation
+
+Phenomenon is available as an npm package and can also be loaded directly from a CDN. Choose the installation method that works best for your project.
+
+## Package manager
+
+Install Phenomenon using your preferred package manager:
+
+<CodeGroup>
+```bash npm
+npm install phenomenon
+```
+
+```bash yarn
+yarn add phenomenon
+```
+
+```bash pnpm
+pnpm add phenomenon
+```
+</CodeGroup>
+
+Then import it in your JavaScript or TypeScript file:
+
+```javascript
+import Phenomenon from 'phenomenon';
+```
+
+## CDN
+
+You can also load Phenomenon directly from unpkg without any build step:
+
+```html
+<script src="https://unpkg.com/phenomenon"></script>
+<script>
+  // Phenomenon is available as a global variable
+  const phenomenon = new Phenomenon();
+</script>
+```
+
+For a specific version:
+
+```html
+<script src="https://unpkg.com/phenomenon@1.6.0/dist/phenomenon.umd.js"></script>
+```
+
+<Note>
+  When using the CDN version, Phenomenon is exposed as a global variable and can be accessed directly.
+</Note>
+
+## TypeScript support
+
+Phenomenon includes TypeScript type definitions out of the box. No additional `@types` package is needed.
+
+```typescript
+import Phenomenon from 'phenomenon';
+
+const phenomenon: Phenomenon = new Phenomenon({
+  settings: {
+    devicePixelRatio: window.devicePixelRatio,
+    clearColor: [0, 0, 0, 1],
+  },
+});
+```
+
+## Canvas setup
+
+Before using Phenomenon, make sure you have a `<canvas>` element in your HTML:
+
+```html
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Phenomenon Demo</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      canvas {
+        width: 100vw;
+        height: 100vh;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas></canvas>
+    <script src="your-script.js"></script>
+  </body>
+</html>
+```
+
+<Tip>
+  Phenomenon will automatically select the first `<canvas>` element on the page, or you can pass a specific canvas element using the `canvas` option.
+</Tip>
+
+## Browser support
+
+Phenomenon requires WebGL support. It works in all modern browsers:
+
+- Chrome/Edge (latest)
+- Firefox (latest)
+- Safari (latest)
+- Mobile browsers with WebGL support
+
+For WebGL 2.0 support, use the `contextType: 'webgl2'` option when creating your Phenomenon instance.
+
+## Next steps
+
+Now that you have Phenomenon installed, you're ready to create your first particle system:
+
+<Card title="Quickstart Tutorial" icon="rocket" href="/quickstart">
+  Follow the quickstart guide to render your first particles
+</Card>

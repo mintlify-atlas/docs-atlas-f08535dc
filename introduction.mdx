@@ -1,0 +1,107 @@
+---
+title: Introduction
+description: A fast, low-level WebGL library for rendering millions of particles using GPU acceleration
+---
+
+# Welcome to Phenomenon
+
+Phenomenon is a very small, low-level WebGL library that provides the essentials to deliver a high performance experience. Its core functionality is built around the idea of moving **millions of particles** around using the power of the GPU.
+
+## Why Phenomenon?
+
+Building WebGL applications from scratch can be complex and time-consuming. Phenomenon gives you a lightweight foundation to create stunning particle effects and GPU-accelerated graphics without the overhead of larger 3D libraries.
+
+<CardGroup cols={2}>
+  <Card title="GPU-accelerated" icon="microchip">
+    Leverage the full power of your graphics card to render millions of particles at 60fps
+  </Card>
+  <Card title="Tiny footprint" icon="feather">
+    Just 2kB gzipped with zero dependencies - perfect for performance-critical applications
+  </Card>
+  <Card title="Highly configurable" icon="sliders">
+    Low-level API gives you complete control over shaders, attributes, and uniforms
+  </Card>
+  <Card title="Dynamic instances" icon="layer-group">
+    Add and remove particle systems on the fly without performance penalties
+  </Card>
+</CardGroup>
+
+## Key features
+
+- **Small in size, no dependencies** - Keep your bundle size minimal
+- **GPU based for high performance** - Render millions of particles smoothly
+- **Low-level & highly configurable** - Full control over WebGL rendering
+- **Helper functions with options** - Sensible defaults that you can override
+- **Add & destroy instances dynamically** - Manage multiple particle systems
+- **Dynamic attribute switching** - Update particle data on the fly
+- **TypeScript support** - Full type definitions included
+
+## What you can build
+
+Phenomenon excels at creating:
+
+- Complex particle systems and effects
+- Data visualizations with thousands of points
+- Interactive 3D graphics and animations
+- GPU-accelerated transitions and morphing effects
+- Custom WebGL rendering pipelines
+
+## Quick look
+
+Here's what using Phenomenon looks like:
+
+```javascript
+import Phenomenon from 'phenomenon';
+
+// Create a renderer
+const phenomenon = new Phenomenon({
+  settings: {
+    devicePixelRatio: 1,
+    position: { x: 0, y: 0, z: 2 },
+  },
+});
+
+// Add a particle system
+phenomenon.add('particles', {
+  attributes: [
+    {
+      name: 'aPositionStart',
+      data: () => [Math.random(), Math.random(), Math.random()],
+      size: 3,
+    },
+  ],
+  vertex: `
+    attribute vec3 aPositionStart;
+    uniform mat4 uProjectionMatrix;
+    uniform mat4 uModelMatrix;
+    uniform mat4 uViewMatrix;
+
+    void main(){
+      gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(aPositionStart, 1.0);
+      gl_PointSize = 2.0;
+    }
+  `,
+  fragment: `
+    precision mediump float;
+
+    void main(){
+      gl_FragColor = vec4(1.0, 0.0, 0.5, 1.0);
+    }
+  `,
+  multiplier: 10000,
+});
+```
+
+## Get started
+
+<CardGroup cols={3}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Phenomenon via npm, yarn, or CDN
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Build your first particle system in minutes
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/renderer">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>

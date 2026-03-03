@@ -1,0 +1,530 @@
+---
+title: Performance optimization
+description: Best practices for achieving maximum performance with millions of particles
+---
+
+Phenomenon is designed for high performance, capable of rendering millions of particles at 60 FPS. Follow these optimization strategies to get the best results.
+
+## Critical performance factors
+
+### Use multiplier over instances
+
+This is the single most important optimization. One instance with a high multiplier performs **significantly better** than multiple instances with low multipliers.
+
+```javascript
+// GOOD: One instance with high multiplier
+phenomenon.add('particles', {
+  multiplier: 40000,
+  attributes,
+  vertex,
+  fragment,
+  uniforms,
+});
+
+// BAD: Multiple instances with low multipliers
+for (let i = 0; i < 10; i++) {
+  phenomenon.add(`particles-${i}`, {
+    multiplier: 4000,
+    attributes,
+    vertex,
+    fragment,
+    uniforms,
+  });
+}
+```
+
+<Warning>
+  Each instance requires separate WebGL state changes (program switching, buffer binding, uniform updates). These operations are expensive. Minimize the number of instances.
+</Warning>
+
+**Why this matters:**
+
+From the source code (src/index.ts:249):
+```typescript
+gl.drawArrays(this.mode, 0, multiplier * this.geometry.vertices.length);
+```
+
+A single draw call renders all particles in an instance. Multiple instances mean multiple draw calls, which significantly impacts performance.
+
+<Tip>
+  If you need different visual effects, try using attributes to vary appearance within a single instance rather than creating multiple instances.
+</Tip>
+
+### Optimize devicePixelRatio
+
+The `devicePixelRatio` setting has a massive impact on performance because it affects the number of pixels rendered.
+
+```javascript
+// MAXIMUM PERFORMANCE: Use 1
+const phenomenon = new Phenomenon({
+  settings: {
+    devicePixelRatio: 1,
+  },
+});
+
+// MAXIMUM QUALITY: Use device's native ratio
+const phenomenon = new Phenomenon({
+  settings: {
+    devicePixelRatio: window.devicePixelRatio, // Often 2 or 3
+  },
+});
+
+// BALANCED: Use a middle ground
+const phenomenon = new Phenomenon({
+  settings: {
+    devicePixelRatio: Math.min(window.devicePixelRatio, 2),
+  },
+});
+```
+
+**Performance impact:**
+
+From src/index.ts:375-376:
+```typescript
+canvas.width = canvas.clientWidth * devicePixelRatio;
+canvas.height = canvas.clientHeight * devicePixelRatio;
+```
+
+A `devicePixelRatio` of 2 renders **4x as many pixels** (2x width × 2x height). A ratio of 3 renders **9x as many pixels**.
+
+<Note>
+  On a 1920×1080 display:
+  - `devicePixelRatio: 1` → 2,073,600 pixels
+  - `devicePixelRatio: 2` → 8,294,400 pixels (4x slower)
+  - `devicePixelRatio: 3` → 18,662,400 pixels (9x slower)
+</Note>
+
+### Disable antialiasing
+
+Antialiasing improves visual quality but reduces performance. Phenomenon disables it by default.
+
+```javascript
+// DEFAULT (optimized)
+const phenomenon = new Phenomenon({
+  context: {
+    antialias: false,
+  },
+});
+
+// Enable only if visual quality is critical
+const phenomenon = new Phenomenon({
+  context: {
+    antialias: true,
+  },
+});
+```
+
+From src/index.ts:308-309:
+```typescript
+alpha: false,
+antialias: false,
+```
+
+<Tip>
+  Test with and without antialiasing on your target devices. The visual improvement may not be worth the performance cost for particle effects.
+</Tip>
+
+## Shader optimization
+
+### Minimize calculations in vertex shader
+
+The vertex shader runs for **every particle, every frame**. Even small optimizations have significant impact.
+
+```glsl
+// BAD: Calculating constants per particle
+void main(){
+  float pi = 3.14159;
+  float twoPi = pi * 2.0;
+  float angle = twoPi / 360.0;
+  // ... use angle
+}
+
+// GOOD: Pass as uniform, calculated once
+uniform float uAngle;
+void main(){
+  // ... use uAngle
+}
+```
+
+### Use built-in GLSL functions
+
+GLSL provides highly optimized built-in functions. Use them instead of manual implementations.
+
+```glsl
+// SLOW: Manual interpolation
+vec3 position = aStart + (aEnd - aStart) * progress;
+
+// FAST: Built-in mix function
+vec3 position = mix(aStart, aEnd, progress);
+
+// SLOW: Manual normalization
+vec3 normalized = vector / sqrt(dot(vector, vector));
+
+// FAST: Built-in normalize
+vec3 normalized = normalize(vector);
+```
+
+### Avoid conditionals when possible
+
+GPUs execute shaders in parallel. Conditionals (if/else) can reduce this parallelism.
+
+```glsl
+// SLOWER: Using conditional
+if (uProgress > 0.5) {
+  color = color * 2.0;
+} else {
+  color = color * 0.5;
+}
+
+// FASTER: Using mix and step
+float multiplier = mix(0.5, 2.0, step(0.5, uProgress));
+color = color * multiplier;
+```
+
+<Note>
+  Simple conditionals are often fine. This optimization matters most in complex shaders or when rendering millions of particles.
+</Note>
+
+### Optimize point size for performance
+
+In the demo (demo/src/index.js:118):
+```javascript
+gl_PointSize = ${devicePixelRatio.toFixed(1)};
+```
+
+Smaller point sizes render faster. If you need larger particles, consider using geometry with billboarded quads instead.
+
+## Attribute optimization
+
+### Minimize attribute count
+
+Each attribute adds memory bandwidth usage. Only include attributes you actually need.
+
+```javascript
+// Less efficient: Many attributes
+const attributes = [
+  { name: 'aPosition', size: 3 },
+  { name: 'aVelocity', size: 3 },
+  { name: 'aColor', size: 3 },
+  { name: 'aSize', size: 1 },
+  { name: 'aRotation', size: 1 },
+  { name: 'aOffset', size: 1 },
+];
+
+// More efficient: Combine or calculate in shader
+const attributes = [
+  { name: 'aPosition', size: 3 },
+  { name: 'aColor', size: 3 },
+  { name: 'aIndex', size: 1 }, // Use for calculations
+];
+```
+
+### Use appropriate attribute sizes
+
+Don't use larger sizes than necessary:
+
+```javascript
+// BAD: Using vec3 for a single value
+{
+  name: 'aOpacity',
+  data: () => [Math.random(), 0, 0], // Only using first component
+  size: 3,
+}
+
+// GOOD: Using float
+{
+  name: 'aOpacity',
+  data: () => [Math.random()],
+  size: 1,
+}
+```
+
+### Be cautious with dynamic attributes
+
+Dynamic attribute calculations run on the CPU and can cause frame drops.
+
+From src/index.ts:169-198, `prepareAttribute()` loops through all particles:
+```typescript
+for (let j = 0; j < multiplier; j += 1) {
+  for (let k = 0; k < vertices.length; k += 1) {
+    for (let l = 0; l < attribute.size; l += 1) {
+      // Calculate and store each value
+    }
+  }
+}
+```
+
+With 10,000 particles and a size-3 attribute, this is 30,000 calculations **on the CPU**.
+
+<Warning>
+  Limit dynamic attribute updates to transitions between states. Don't update attributes every frame if possible.
+</Warning>
+
+**Better alternatives:**
+
+<Steps>
+  <Step title="Use uniforms for shared values">
+    ```javascript
+    // Instead of updating attributes
+    onRender: instance => {
+      instance.uniforms.uTime.value += 0.01;
+    }
+    ```
+  </Step>
+
+  <Step title="Calculate in shader">
+    ```glsl
+    // Instead of pre-calculating positions
+    attribute float aIndex;
+    uniform float uTime;
+    
+    void main(){
+      float offset = aIndex * 0.1;
+      vec3 pos = aPosition + vec3(sin(uTime + offset), 0.0, 0.0);
+    }
+    ```
+  </Step>
+
+  <Step title="Use prepareBuffer() to reuse data">
+    ```javascript
+    // Fast: No recalculation
+    instance.prepareBuffer({
+      name: 'aPositionStart',
+      data: instance.attributes[1].data,
+      size: 3,
+    });
+    ```
+  </Step>
+</Steps>
+
+## Memory optimization
+
+### Destroy unused instances
+
+Instances hold GPU resources (buffers, programs). Remove them when no longer needed.
+
+```javascript
+// Remove specific instance
+phenomenon.remove('particles');
+
+// Remove all instances and renderer
+phenomenon.destroy();
+```
+
+From src/index.ts:258-264:
+```typescript
+destroy() {
+  for (let i = 0; i < this.buffers.length; i += 1) {
+    this.gl.deleteBuffer(this.buffers[i].buffer);
+  }
+  this.gl.deleteProgram(this.program);
+}
+```
+
+### Limit uniform updates
+
+Only update uniforms that change:
+
+```javascript
+// BAD: Updating all uniforms every frame
+onRender: instance => {
+  instance.uniforms.uProgress.value += 0.01;
+  instance.uniforms.uColor.value = [1, 0, 0];
+  instance.uniforms.uScale.value = 1.0;
+}
+
+// GOOD: Only update what changes
+onRender: instance => {
+  instance.uniforms.uProgress.value += 0.01;
+  // uColor and uScale stay constant
+}
+```
+
+## Rendering optimization
+
+### Toggle rendering when not visible
+
+Stop the render loop when the scene isn't visible:
+
+```javascript
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    phenomenon.toggle(false);
+  } else {
+    phenomenon.toggle(true);
+  }
+});
+```
+
+From src/index.ts:429-433:
+```typescript
+toggle(shouldRender: boolean) {
+  this.shouldRender = shouldRender;
+  if (this.shouldRender) this.render();
+}
+```
+
+This stops `requestAnimationFrame` calls, saving CPU and GPU resources.
+
+### Optimize camera settings
+
+Adjust the clip range to match your scene:
+
+```javascript
+const phenomenon = new Phenomenon({
+  settings: {
+    clip: [0.001, 100], // [near, far]
+  },
+});
+```
+
+Narrower clip ranges improve depth precision but don't significantly affect performance. Wide ranges (e.g., [0.001, 10000]) can cause z-fighting artifacts.
+
+## Performance monitoring
+
+Measure frame rate to identify bottlenecks:
+
+```javascript
+let lastTime = performance.now();
+let frames = 0;
+let minFPS = Infinity;
+let maxFPS = 0;
+
+const phenomenon = new Phenomenon({
+  settings: {
+    onRender: renderer => {
+      frames++;
+      const now = performance.now();
+      const delta = now - lastTime;
+      
+      if (delta >= 1000) {
+        const fps = Math.round((frames * 1000) / delta);
+        minFPS = Math.min(minFPS, fps);
+        maxFPS = Math.max(maxFPS, fps);
+        console.log(`FPS: ${fps} (min: ${minFPS}, max: ${maxFPS})`);
+        frames = 0;
+        lastTime = now;
+      }
+    },
+  },
+});
+```
+
+<Tip>
+  Use browser DevTools' Performance tab to profile GPU usage and identify which operations are slowest.
+</Tip>
+
+## Platform-specific optimizations
+
+### Mobile devices
+
+Mobile GPUs are less powerful than desktop GPUs. Apply these settings:
+
+```javascript
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+const phenomenon = new Phenomenon({
+  settings: {
+    devicePixelRatio: isMobile ? 1 : Math.min(window.devicePixelRatio, 2),
+  },
+  context: {
+    antialias: false, // Always disable on mobile
+  },
+});
+
+// Reduce particle count on mobile
+const multiplier = isMobile ? 2000 : 10000;
+```
+
+### High-DPI displays
+
+Balance quality and performance:
+
+```javascript
+const phenomenon = new Phenomenon({
+  settings: {
+    // Cap at 2 even on 3x displays
+    devicePixelRatio: Math.min(window.devicePixelRatio, 2),
+  },
+});
+```
+
+## Performance checklist
+
+<Steps>
+  <Step title="Instance count">
+    ✅ Use one instance with high multiplier
+    ❌ Multiple instances with low multipliers
+  </Step>
+
+  <Step title="Resolution">
+    ✅ `devicePixelRatio: 1` for best performance
+    ⚠️ `devicePixelRatio: window.devicePixelRatio` only if quality is critical
+  </Step>
+
+  <Step title="Context settings">
+    ✅ `antialias: false`
+    ✅ `alpha: false` (unless transparency needed)
+  </Step>
+
+  <Step title="Attributes">
+    ✅ Minimize count and size
+    ✅ Use `prepareBuffer()` instead of `prepareAttribute()` when possible
+    ❌ Updating attributes every frame
+  </Step>
+
+  <Step title="Shaders">
+    ✅ Use built-in GLSL functions
+    ✅ Move calculations to uniforms when possible
+    ⚠️ Use conditionals sparingly
+  </Step>
+
+  <Step title="Render loop">
+    ✅ Toggle rendering when not visible
+    ✅ Only update changed uniforms
+    ✅ Destroy unused instances
+  </Step>
+</Steps>
+
+## Benchmarking example
+
+Test different configurations to find optimal settings:
+
+```javascript
+const configs = [
+  { multiplier: 5000, dpr: 1, antialias: false },
+  { multiplier: 10000, dpr: 1, antialias: false },
+  { multiplier: 5000, dpr: 2, antialias: false },
+  { multiplier: 5000, dpr: 1, antialias: true },
+];
+
+configs.forEach(config => {
+  const phenomenon = new Phenomenon({
+    settings: { devicePixelRatio: config.dpr },
+    context: { antialias: config.antialias },
+  });
+  
+  phenomenon.add('particles', {
+    multiplier: config.multiplier,
+    // ... other settings
+  });
+  
+  // Measure FPS after 100 frames
+  let frames = 0;
+  const startTime = performance.now();
+  
+  phenomenon.settings.onRender = () => {
+    frames++;
+    if (frames === 100) {
+      const elapsed = performance.now() - startTime;
+      const fps = (100 / elapsed) * 1000;
+      console.log(`Config ${JSON.stringify(config)}: ${fps.toFixed(2)} FPS`);
+      phenomenon.destroy();
+    }
+  };
+});
+```
+
+<Note>
+  Always test on your target devices. Performance characteristics vary significantly between desktop and mobile GPUs.
+</Note>

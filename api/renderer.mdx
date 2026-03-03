@@ -1,0 +1,267 @@
+---
+title: Renderer
+description: Complete API reference for the Renderer class
+---
+
+The `Renderer` class is the main entry point for Phenomenon. It manages the WebGL context, handles the render loop, and orchestrates multiple particle instances.
+
+## Constructor
+
+Creates a new Renderer instance with the specified configuration.
+
+```typescript
+new Renderer(props?: RendererProps)
+```
+
+<ParamField path="props" type="RendererProps">
+  Configuration options for the renderer
+
+  <Expandable title="properties">
+    <ParamField path="canvas" type="HTMLCanvasElement" default="document.querySelector('canvas')">
+      The canvas element to render to. If not provided, Phenomenon will use the first canvas element found in the document.
+    </ParamField>
+
+    <ParamField path="context" type="object" default="{}">
+      WebGL context attributes passed to `getContext()`. By default, Phenomenon sets `alpha: false` and `antialias: false`.
+    </ParamField>
+
+    <ParamField path="contextType" type="string" default="'experimental-webgl'">
+      The type of WebGL context to create. You can use `'webgl'` or `'experimental-webgl'`.
+    </ParamField>
+
+    <ParamField path="settings" type="object" default="{}">
+      Additional renderer settings that override defaults.
+
+      <Expandable title="available settings">
+        <ParamField path="devicePixelRatio" type="number" default="1">
+          Controls canvas resolution scaling. Set to `window.devicePixelRatio` for high-DPI displays.
+        </ParamField>
+
+        <ParamField path="clearColor" type="[number, number, number, number]" default="[1, 1, 1, 1]">
+          Background color as RGBA values (0-1 range). Default is white.
+        </ParamField>
+
+        <ParamField path="position" type="{ x: number; y: number; z: number }" default="{ x: 0, y: 0, z: 2 }">
+          Camera position in 3D space.
+        </ParamField>
+
+        <ParamField path="clip" type="[number, number]" default="[0.001, 100]">
+          Near and far clipping planes for the perspective projection.
+        </ParamField>
+
+        <ParamField path="onSetup" type="(gl: WebGLRenderingContext) => void">
+          Callback invoked once before the first render. Use this to modify the WebGL context.
+        </ParamField>
+
+        <ParamField path="onRender" type="(renderer: Renderer) => void">
+          Callback invoked on every frame after all instances have rendered.
+        </ParamField>
+      </Expandable>
+    </ParamField>
+
+    <ParamField path="debug" type="boolean" default="false">
+      Enable debug mode to log shader compilation errors to the console.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Example
+
+```javascript
+import Renderer from 'phenomenon';
+
+const renderer = new Renderer({
+  canvas: document.querySelector('#canvas'),
+  context: {
+    alpha: true,
+    antialias: true,
+  },
+  settings: {
+    devicePixelRatio: window.devicePixelRatio,
+    clearColor: [0, 0, 0, 1],
+    position: { x: 0, y: 0, z: 3 },
+    onRender: (renderer) => {
+      // Update uniforms or perform calculations each frame
+    },
+  },
+  debug: true,
+});
+```
+
+## Methods
+
+### add()
+
+Adds a new particle instance to the renderer.
+
+```typescript
+add(key: string, settings: InstanceProps): Instance
+```
+
+<ParamField path="key" type="string" required>
+  Unique identifier for this instance. Used to reference or remove the instance later.
+</ParamField>
+
+<ParamField path="settings" type="InstanceProps" required>
+  Configuration for the particle instance. See the [Instance](/api/instance) page for all available options.
+</ParamField>
+
+<ResponseField name="return" type="Instance">
+  Returns the created Instance object.
+</ResponseField>
+
+#### Example
+
+```javascript
+const instance = renderer.add('particles', {
+  vertex: `
+    attribute vec3 aPosition;
+    uniform mat4 uProjectionMatrix;
+    uniform mat4 uModelMatrix;
+    uniform mat4 uViewMatrix;
+    
+    void main() {
+      gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(aPosition, 1.0);
+      gl_PointSize = 2.0;
+    }
+  `,
+  fragment: `
+    precision mediump float;
+    
+    void main() {
+      gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+    }
+  `,
+  mode: 0,
+  multiplier: 10000,
+});
+```
+
+### remove()
+
+Removes an instance from the renderer and destroys its resources.
+
+```typescript
+remove(key: string): void
+```
+
+<ParamField path="key" type="string" required>
+  The unique identifier of the instance to remove.
+</ParamField>
+
+#### Example
+
+```javascript
+renderer.remove('particles');
+```
+
+### resize()
+
+Manually triggers a resize event. This recalculates the canvas dimensions, viewport, and projection matrices.
+
+```typescript
+resize(): void
+```
+
+You typically don't need to call this manually, as Phenomenon automatically handles window resize events.
+
+#### Example
+
+```javascript
+renderer.resize();
+```
+
+### toggle()
+
+Starts or stops the render loop.
+
+```typescript
+toggle(shouldRender?: boolean): void
+```
+
+<ParamField path="shouldRender" type="boolean">
+  If `true`, starts rendering. If `false`, stops rendering. If not provided, toggles the current state.
+</ParamField>
+
+#### Example
+
+```javascript
+// Stop rendering
+renderer.toggle(false);
+
+// Resume rendering
+renderer.toggle(true);
+
+// Toggle current state
+renderer.toggle();
+```
+
+### render()
+
+Manually renders a single frame. This clears the canvas and renders all instances.
+
+```typescript
+render(): void
+```
+
+You typically don't need to call this manually, as it runs automatically in a `requestAnimationFrame` loop.
+
+#### Example
+
+```javascript
+renderer.render();
+```
+
+### destroy()
+
+Destroys the renderer and all its instances, cleaning up WebGL resources and stopping the render loop.
+
+```typescript
+destroy(): void
+```
+
+#### Example
+
+```javascript
+renderer.destroy();
+```
+
+## Properties
+
+The Renderer instance exposes these public properties:
+
+<ResponseField name="gl" type="WebGLRenderingContext">
+  The WebGL rendering context.
+</ResponseField>
+
+<ResponseField name="canvas" type="HTMLCanvasElement">
+  The canvas element being rendered to.
+</ResponseField>
+
+<ResponseField name="instances" type="Map<string, Instance>">
+  Map of all active instances, keyed by their identifier.
+</ResponseField>
+
+<ResponseField name="uniforms" type="{ [key: string]: UniformProps }">
+  Shared uniforms available to all instances. Automatically includes `uProjectionMatrix`, `uModelMatrix`, and `uViewMatrix`.
+</ResponseField>
+
+<ResponseField name="shouldRender" type="boolean">
+  Whether the render loop is active.
+</ResponseField>
+
+<ResponseField name="devicePixelRatio" type="number">
+  The current device pixel ratio used for canvas scaling.
+</ResponseField>
+
+<ResponseField name="clearColor" type="[number, number, number, number]">
+  The current background color as RGBA values.
+</ResponseField>
+
+<ResponseField name="position" type="{ x: number; y: number; z: number }">
+  The current camera position.
+</ResponseField>
+
+<ResponseField name="clip" type="[number, number]">
+  Near and far clipping planes.
+</ResponseField>

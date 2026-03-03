@@ -1,0 +1,207 @@
+---
+title: Basic particle system
+description: Create your first particle system with Phenomenon
+---
+
+This example demonstrates how to create a basic particle system with Phenomenon. You'll learn how to set up the renderer, define attributes, and render particles to the screen.
+
+<Card
+  title="View live demo"
+  icon="arrow-up-right-from-square"
+  href="https://codepen.io/cvaneenige/full/odpVPW"
+>
+  See this example running on CodePen
+</Card>
+
+## Complete example
+
+Here's a complete working example that creates a particle system with 10,000 particles:
+
+```javascript
+import Phenomenon from 'phenomenon';
+
+// Create the renderer
+const phenomenon = new Phenomenon({
+  settings: {
+    devicePixelRatio: 1,
+    position: { x: 0, y: 0, z: 3 },
+  },
+});
+
+// The amount of particles to create
+const multiplier = 10000;
+
+// Define attributes for each particle
+const attributes = [
+  {
+    name: 'aPosition',
+    data: () => [
+      Math.random() * 2 - 1,  // x
+      Math.random() * 2 - 1,  // y
+      Math.random() * 2 - 1   // z
+    ],
+    size: 3,
+  },
+  {
+    name: 'aColor',
+    data: () => [
+      Math.random(),  // r
+      Math.random(),  // g
+      Math.random()   // b
+    ],
+    size: 3,
+  },
+];
+
+// Vertex shader
+const vertex = `
+  attribute vec3 aPosition;
+  attribute vec3 aColor;
+
+  uniform mat4 uProjectionMatrix;
+  uniform mat4 uModelMatrix;
+  uniform mat4 uViewMatrix;
+
+  varying vec3 vColor;
+
+  void main(){
+    gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(aPosition, 1.0);
+    gl_PointSize = 1.0;
+    vColor = aColor;
+  }
+`;
+
+// Fragment shader
+const fragment = `
+  precision mediump float;
+
+  varying vec3 vColor;
+
+  void main(){
+    gl_FragColor = vec4(vColor, 1.0);
+  }
+`;
+
+// Add the particle instance
+phenomenon.add('particles', {
+  attributes,
+  multiplier,
+  vertex,
+  fragment,
+});
+```
+
+## Breaking down the code
+
+### Create the renderer
+
+The renderer is the main entry point for Phenomenon:
+
+```javascript
+const phenomenon = new Phenomenon({
+  settings: {
+    devicePixelRatio: 1,
+    position: { x: 0, y: 0, z: 3 },
+  },
+});
+```
+
+- `devicePixelRatio` - Controls the resolution (1 for best performance)
+- `position` - Camera position in 3D space
+
+### Define attributes
+
+Attributes store data for each particle:
+
+```javascript
+const attributes = [
+  {
+    name: 'aPosition',     // Name used in shaders
+    data: () => [...],     // Function that returns data
+    size: 3,               // Number of values (x, y, z)
+  },
+];
+```
+
+The `data` function is called once for each particle. It should return an array of values matching the specified `size`.
+
+<Tip>
+  Use the `multiplier` parameter to control how many times the attributes are generated. This creates the total number of particles.
+</Tip>
+
+### Write shaders
+
+#### Vertex shader
+
+The vertex shader positions each particle in 3D space:
+
+```glsl
+attribute vec3 aPosition;
+attribute vec3 aColor;
+
+uniform mat4 uProjectionMatrix;
+uniform mat4 uModelMatrix;
+uniform mat4 uViewMatrix;
+
+varying vec3 vColor;
+
+void main(){
+  gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(aPosition, 1.0);
+  gl_PointSize = 1.0;
+  vColor = aColor;
+}
+```
+
+- Attributes are read from the GPU buffers
+- Uniforms are shared across all particles
+- `gl_PointSize` controls particle size
+- `vColor` passes data to the fragment shader
+
+#### Fragment shader
+
+The fragment shader determines the color of each particle:
+
+```glsl
+precision mediump float;
+
+varying vec3 vColor;
+
+void main(){
+  gl_FragColor = vec4(vColor, 1.0);
+}
+```
+
+### Add the instance
+
+Finally, add the particle instance to the renderer:
+
+```javascript
+phenomenon.add('particles', {
+  attributes,
+  multiplier,
+  vertex,
+  fragment,
+});
+```
+
+The renderer will automatically start rendering the particles.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Transitions"
+    icon="arrows-turn-right"
+    href="/examples/transitions"
+  >
+    Learn how to animate particles between positions
+  </Card>
+  
+  <Card
+    title="Shapes"
+    icon="cube"
+    href="/examples/shapes"
+  >
+    Create 3D shapes with particles
+  </Card>
+</CardGroup>

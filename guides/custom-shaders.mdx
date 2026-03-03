@@ -1,0 +1,318 @@
+---
+title: Writing custom shaders
+description: Learn how to write vertex and fragment shaders for particle effects
+---
+
+Shaders are programs that run on the GPU to position and color your particles. Phenomenon uses WebGL shaders written in GLSL (OpenGL Shading Language).
+
+## Shader basics
+
+Every instance requires two shaders:
+- **Vertex shader**: Positions each particle in 3D space
+- **Fragment shader**: Determines the color of each pixel
+
+## Vertex shader structure
+
+The vertex shader receives attributes (per-particle data) and uniforms (shared values), then outputs the final position.
+
+```glsl
+attribute vec3 aPositionStart;
+attribute vec3 aPositionEnd;
+attribute vec3 aPosition;
+attribute vec3 aColor;
+attribute float aOffset;
+
+uniform float uProgress;
+uniform mat4 uProjectionMatrix;
+uniform mat4 uModelMatrix;
+uniform mat4 uViewMatrix;
+
+varying vec3 vColor;
+
+void main(){
+  // Calculate position based on progress
+  vec3 newPosition = mix(aPositionStart, aPositionEnd, uProgress);
+  
+  // Transform to screen space
+  gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(newPosition + aPosition, 1.0);
+  
+  // Set particle size
+  gl_PointSize = 1.0;
+  
+  // Pass color to fragment shader
+  vColor = aColor;
+}
+```
+
+<Note>
+  The matrices `uProjectionMatrix`, `uModelMatrix`, and `uViewMatrix` are automatically provided by Phenomenon. Always include them in your vertex shader for proper 3D transformation.
+</Note>
+
+### Required vertex shader outputs
+
+<Steps>
+  <Step title="gl_Position">
+    The final position of the particle in clip space. This is **required** and must be a `vec4`.
+
+    ```glsl
+    gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(position, 1.0);
+    ```
+  </Step>
+
+  <Step title="gl_PointSize">
+    The size of the particle in pixels. Required when rendering points (mode 0).
+
+    ```glsl
+    gl_PointSize = 1.0;
+    ```
+
+    <Tip>
+      Multiply by `devicePixelRatio` for consistent sizes on high-DPI displays:
+      ```glsl
+      gl_PointSize = ${devicePixelRatio.toFixed(1)};
+      ```
+    </Tip>
+  </Step>
+</Steps>
+
+## Fragment shader structure
+
+The fragment shader determines the color of each pixel. It receives varyings from the vertex shader.
+
+```glsl
+precision mediump float;
+
+varying vec3 vColor;
+
+void main(){
+  gl_FragColor = vec4(vColor, 1.0);
+}
+```
+
+<Warning>
+  Always declare `precision mediump float;` at the top of your fragment shader. Without it, shader compilation may fail on some devices.
+</Warning>
+
+## Passing data between shaders
+
+Use `varying` variables to pass data from the vertex shader to the fragment shader.
+
+```glsl
+// Vertex shader
+attribute vec3 aColor;
+varying vec3 vColor;
+
+void main(){
+  vColor = aColor; // Set varying
+  // ... rest of shader
+}
+
+// Fragment shader
+varying vec3 vColor;
+
+void main(){
+  gl_FragColor = vec4(vColor, 1.0); // Use varying
+}
+```
+
+<Note>
+  Varyings are automatically interpolated between vertices, which is useful for smooth color gradients across geometry.
+</Note>
+
+## Advanced shader techniques
+
+### Easing functions
+
+Add custom easing functions to create smooth animations. This example from the demo shows an ease-in-out-quint function:
+
+```glsl
+float easeInOutQuint(float t){
+  return t < 0.5 ? 16.0 * t * t * t * t * t : 1.0 + 16.0 * (--t) * t * t * t * t;
+}
+
+void main(){
+  float tProgress = easeInOutQuint(min(1.0, max(0.0, (uProgress - aOffset)) / 0.6));
+  vec3 newPosition = mix(aPositionStart, aPositionEnd, tProgress);
+  // ... rest of shader
+}
+```
+
+<Tip>
+  Easing functions run on the GPU, making them extremely fast even with millions of particles.
+</Tip>
+
+### Offset-based delays
+
+Create staggered animations by using per-particle offsets:
+
+```javascript
+// In your attributes
+{
+  name: 'aOffset',
+  data: i => [i * ((1 - duration) / (multiplier - 1))],
+  size: 1,
+}
+```
+
+```glsl
+// In your vertex shader
+attribute float aOffset;
+uniform float uProgress;
+
+void main(){
+  float tProgress = easeInOutQuint(
+    min(1.0, max(0.0, (uProgress - aOffset)) / 0.6)
+  );
+  // ... use tProgress for animation
+}
+```
+
+This technique creates a wave effect where each particle animates at a slightly different time.
+
+### Color manipulation
+
+Modify colors in the fragment shader for dynamic effects:
+
+```glsl
+precision mediump float;
+
+varying vec3 vColor;
+uniform float uProgress;
+
+void main(){
+  // Fade particles based on progress
+  float alpha = 1.0 - uProgress;
+  
+  // Brighten color
+  vec3 brightenedColor = vColor * 1.5;
+  
+  gl_FragColor = vec4(brightenedColor, alpha);
+}
+```
+
+<Warning>
+  To use transparency, you need to enable alpha blending in the renderer context:
+  ```javascript
+  new Phenomenon({
+    context: { alpha: true },
+  });
+  ```
+</Warning>
+
+## Shader debugging
+
+Enable debug mode to see shader compilation errors in the console:
+
+```javascript
+const phenomenon = new Phenomenon({
+  settings: {
+    debug: true,
+  },
+});
+```
+
+The debug mode checks both vertex and fragment shaders for compilation errors and logs detailed error messages.
+
+<Accordion title="Common shader errors">
+  **"No precision specified"**
+  - Add `precision mediump float;` to your fragment shader
+
+  **"Undefined variable"**
+  - Ensure all attributes and uniforms are declared
+  - Check for typos in variable names
+  
+  **"Type mismatch"**
+  - Verify that operations use compatible types (e.g., `vec3 * float`, not `vec3 * vec4`)
+  
+  **"Missing main function"**
+  - Every shader must have a `void main()` function
+</Accordion>
+
+## Performance considerations
+
+<Steps>
+  <Step title="Minimize calculations">
+    Move static calculations outside the shader or into uniforms:
+
+    ```glsl
+    // BAD: Recalculated for every particle
+    float value = 3.14159 * 2.0 / 360.0;
+
+    // GOOD: Pass as uniform
+    uniform float uConstantValue;
+    ```
+  </Step>
+
+  <Step title="Use built-in functions">
+    GLSL provides optimized built-in functions:
+
+    ```glsl
+    // Use mix() instead of manual interpolation
+    vec3 pos = mix(start, end, progress);
+    
+    // Use normalize() for unit vectors
+    vec3 normal = normalize(direction);
+    
+    // Use smoothstep() for smooth interpolation
+    float t = smoothstep(0.0, 1.0, progress);
+    ```
+  </Step>
+
+  <Step title="Avoid conditionals">
+    Branches can slow down GPU execution. When possible, use mathematical alternatives:
+
+    ```glsl
+    // SLOWER: Using if statement
+    if (uProgress > 0.5) {
+      color = color * 2.0;
+    }
+
+    // FASTER: Using step function
+    color = color * (1.0 + step(0.5, uProgress));
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  For more shader optimization strategies, see the [performance guide](/guides/performance).
+</Tip>
+
+## Template for new shaders
+
+Use this template as a starting point for new particle effects:
+
+<CodeGroup>
+```glsl Vertex Shader
+attribute vec3 aPosition;
+attribute vec3 aColor;
+
+uniform mat4 uProjectionMatrix;
+uniform mat4 uModelMatrix;
+uniform mat4 uViewMatrix;
+uniform float uProgress;
+
+varying vec3 vColor;
+
+void main(){
+  vec3 position = aPosition;
+  
+  // Add your custom transformations here
+  
+  gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(position, 1.0);
+  gl_PointSize = 1.0;
+  vColor = aColor;
+}
+```
+
+```glsl Fragment Shader
+precision mediump float;
+
+varying vec3 vColor;
+
+void main(){
+  // Add your custom color effects here
+  
+  gl_FragColor = vec4(vColor, 1.0);
+}
+```
+</CodeGroup>

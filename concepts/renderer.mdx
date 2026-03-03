@@ -1,0 +1,220 @@
+---
+title: Renderer
+description: The Renderer class manages the WebGL context, canvas, and rendering loop
+---
+
+The Renderer (also called Phenomenon) is the core class that manages your WebGL context, canvas setup, and rendering loop. It handles the heavy lifting of WebGL initialization, viewport management, and orchestrating all instances.
+
+## Creating a renderer
+
+You create a renderer by instantiating the `Phenomenon` class. The constructor accepts an optional configuration object:
+
+```javascript
+import Phenomenon from 'phenomenon';
+
+const renderer = new Phenomenon({
+  canvas: document.querySelector('canvas'),
+  context: {},
+  contextType: 'experimental-webgl',
+  settings: {
+    devicePixelRatio: 1,
+    position: { x: 0, y: 0, z: 3 }
+  },
+  debug: false
+});
+```
+
+<Info>
+If you don't provide a canvas element, the renderer will automatically select the first `<canvas>` element in your document.
+</Info>
+
+## Configuration options
+
+### Canvas and context
+
+- **canvas**: The HTMLCanvasElement to render to (defaults to `document.querySelector('canvas')`)
+- **context**: Additional WebGL context attributes passed to `getContext()`
+- **contextType**: The context type string (defaults to `'experimental-webgl'`)
+
+The renderer automatically sets up the context with these defaults:
+
+```javascript
+{
+  alpha: false,
+  antialias: false
+}
+```
+
+### Settings
+
+The `settings` object controls rendering behavior:
+
+- **devicePixelRatio**: Multiplier for canvas resolution (default: `1`)
+- **clearColor**: Background color as RGBA array (default: `[1, 1, 1, 1]`)
+- **position**: Camera position with `{x, y, z}` coordinates (default: `{x: 0, y: 0, z: 2}`)
+- **clip**: Near and far clipping planes as array (default: `[0.001, 100]`)
+- **onRender**: Callback function executed on each frame
+- **onSetup**: Callback function executed once before first render
+
+### Debug mode
+
+When `debug: true`, the renderer logs shader compilation errors to the console:
+
+```javascript
+const renderer = new Phenomenon({
+  debug: true,
+  settings: {
+    position: { x: 0, y: 0, z: 3 }
+  }
+});
+```
+
+<Warning>
+Debug mode creates additional shader objects for validation. Only enable it during development.
+</Warning>
+
+## Managing instances
+
+The renderer stores instances in a `Map` and provides methods to manage them.
+
+### Adding instances
+
+Use `add()` to create and register an instance:
+
+```javascript
+const instance = renderer.add('particles', {
+  attributes: [...],
+  uniforms: {...},
+  vertex: '...',
+  fragment: '...',
+  multiplier: 4000
+});
+```
+
+The first parameter is a unique key string. The method returns the created instance.
+
+<Tip>
+The renderer automatically injects its shared uniforms (projection, view, and model matrices) into each instance.
+</Tip>
+
+### Removing instances
+
+Remove an instance and clean up its resources:
+
+```javascript
+renderer.remove('particles');
+```
+
+This calls `destroy()` on the instance, which deletes all buffers and the shader program.
+
+## The render loop
+
+The renderer starts automatically and uses `requestAnimationFrame` for smooth rendering:
+
+```javascript
+render() {
+  this.gl.clear(16640);
+  
+  this.instances.forEach(instance => {
+    instance.render(this.uniforms);
+  });
+  
+  if (this.onRender) this.onRender(this);
+  
+  if (this.shouldRender) requestAnimationFrame(() => this.render());
+}
+```
+
+### Pausing and resuming
+
+Control the render loop with `toggle()`:
+
+```javascript
+// Pause rendering
+renderer.toggle(false);
+
+// Resume rendering
+renderer.toggle(true);
+
+// Toggle current state
+renderer.toggle();
+```
+
+### Per-frame callbacks
+
+Use the `onRender` callback to update uniforms or perform calculations each frame:
+
+```javascript
+const renderer = new Phenomenon({
+  settings: {
+    onRender: (r) => {
+      // Rotate the model matrix
+      rotateY(r.uniforms.uModelMatrix.value, 0.01);
+    }
+  }
+});
+```
+
+## Automatic viewport management
+
+The renderer handles canvas sizing and viewport updates automatically. On window resize or initialization, it:
+
+1. Updates canvas dimensions based on `devicePixelRatio`
+2. Adjusts the WebGL viewport to match buffer size
+3. Recalculates projection, view, and model matrices
+4. Updates shared uniforms for all instances
+
+The resize handler runs automatically:
+
+```javascript
+window.addEventListener('resize', () => this.resize());
+```
+
+## Shared uniforms
+
+The renderer provides three matrix uniforms available to all instances:
+
+- **uProjectionMatrix**: Perspective projection matrix (mat4)
+- **uViewMatrix**: View transformation matrix (mat4)
+- **uModelMatrix**: Model transformation matrix (mat4)
+
+These are calculated in `resize()` and passed to each instance during rendering.
+
+<Note>
+You must declare these uniforms in your vertex shader to use them:
+
+```glsl
+uniform mat4 uProjectionMatrix;
+uniform mat4 uModelMatrix;
+uniform mat4 uViewMatrix;
+```
+</Note>
+
+## Cleanup
+
+Destroy the renderer and all its instances:
+
+```javascript
+renderer.destroy();
+```
+
+This removes all instances, stops the render loop, and cleans up WebGL resources.
+
+## Accessing the WebGL context
+
+The renderer exposes the WebGL context as `renderer.gl`:
+
+```javascript
+const renderer = new Phenomenon();
+
+// Access WebGL context
+renderer.gl.enable(renderer.gl.BLEND);
+renderer.gl.blendFunc(
+  renderer.gl.SRC_ALPHA,
+  renderer.gl.ONE_MINUS_SRC_ALPHA
+);
+```
+
+<Info>
+The renderer enables `DEPTH_TEST` by default with `LEQUAL` depth function.
+</Info>

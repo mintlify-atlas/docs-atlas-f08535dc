@@ -1,0 +1,403 @@
+---
+title: 3D shapes
+description: Create 3D shapes with particle systems and rotation
+---
+
+This example demonstrates how to create 3D shapes using particle systems with rotation, multiple instances, and color variations.
+
+<Card
+  title="View live demo"
+  icon="arrow-up-right-from-square"
+  href="https://codepen.io/cvaneenige/full/wjXVgr"
+>
+  See 3D shapes in action on CodePen
+</Card>
+
+## Complete example
+
+Here's the demo implementation that creates multiple rotating particle instances with different colors:
+
+```javascript
+import Phenomenon from 'phenomenon';
+import { getRandom, rgbToHsl, rotateY } from './utils';
+
+// Material colors in HSL
+const colors = [
+  [255, 108, 0],
+  [83, 109, 254],
+  [29, 233, 182],
+  [253, 216, 53]
+].map(color => rgbToHsl(color));
+
+const step = 0.01;
+
+// Create the renderer with rotation
+const phenomenon = new Phenomenon({
+  settings: {
+    devicePixelRatio: 1,
+    position: { x: 0, y: 0, z: 3 },
+    onRender: r => {
+      rotateY(r.uniforms.uModelMatrix.value, step * 2);
+    },
+  },
+});
+
+let count = 0;
+
+function addInstance() {
+  count += 1;
+
+  const multiplier = 4000;
+  const duration = 0.6;
+
+  // Random positions for the cube centers
+  const start = {
+    x: getRandom(1),
+    y: getRandom(1),
+    z: getRandom(1),
+  };
+
+  const end = {
+    x: getRandom(1),
+    y: getRandom(1),
+    z: getRandom(1),
+  };
+
+  const attributes = [
+    {
+      name: 'aPositionStart',
+      data: () => [
+        start.x + getRandom(0.1),
+        start.y + getRandom(0.1),
+        start.z + getRandom(0.1)
+      ],
+      size: 3,
+    },
+    {
+      name: 'aPositionEnd',
+      data: () => [
+        end.x + getRandom(0.1),
+        end.y + getRandom(0.1),
+        end.z + getRandom(0.1)
+      ],
+      size: 3,
+    },
+    {
+      name: 'aColor',
+      data: () => colors[count % 4],
+      size: 3,
+    },
+    {
+      name: 'aOffset',
+      data: i => [i * ((1 - duration) / (multiplier - 1))],
+      size: 1,
+    },
+  ];
+
+  const uniforms = {
+    uProgress: {
+      type: 'float',
+      value: 0.0,
+    },
+  };
+
+  const vertex = `
+    attribute vec3 aPositionStart;
+    attribute vec3 aPositionEnd;
+    attribute vec3 aPosition;
+    attribute vec3 aColor;
+    attribute float aOffset;
+
+    uniform float uProgress;
+    uniform mat4 uProjectionMatrix;
+    uniform mat4 uModelMatrix;
+    uniform mat4 uViewMatrix;
+
+    varying vec3 vColor;
+
+    float easeInOutQuint(float t){
+      return t < 0.5 ? 16.0 * t * t * t * t * t : 1.0 + 16.0 * (--t) * t * t * t * t;
+    }
+
+    void main(){
+      float tProgress = easeInOutQuint(min(1.0, max(0.0, (uProgress - aOffset)) / ${duration}));
+      vec3 newPosition = mix(aPositionStart, aPositionEnd, tProgress);
+      gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(newPosition + aPosition, 1.0);
+      gl_PointSize = 1.0;
+      vColor = aColor;
+    }
+  `;
+
+  const fragment = `
+    precision mediump float;
+
+    varying vec3 vColor;
+
+    void main(){
+      gl_FragColor = vec4(vColor, 1.0);
+    }
+  `;
+
+  let forward = true;
+
+  phenomenon.add(count, {
+    attributes,
+    multiplier,
+    vertex,
+    fragment,
+    uniforms,
+    onRender: r => {
+      const { uProgress } = r.uniforms;
+      uProgress.value += forward ? step : -step;
+
+      if (uProgress.value >= 1) {
+        const newEnd = {
+          x: getRandom(1),
+          y: getRandom(1),
+          z: getRandom(1),
+        };
+        r.prepareBuffer({
+          name: 'aPositionStart',
+          data: r.attributes[1].data,
+          size: 3,
+        });
+        r.prepareAttribute({
+          name: 'aPositionEnd',
+          data: () => [
+            newEnd.x + getRandom(0.1),
+            newEnd.y + getRandom(0.1),
+            newEnd.z + getRandom(0.1),
+          ],
+          size: 3,
+        });
+        uProgress.value = 0;
+      } else if (uProgress.value <= 0) {
+        forward = true;
+      }
+    },
+  });
+}
+
+// Create 10 instances
+for (let i = 0; i < 10; i += 1) {
+  addInstance();
+}
+```
+
+## Key concepts
+
+### Global rotation
+
+Rotate all instances together by updating the model matrix:
+
+```javascript
+const phenomenon = new Phenomenon({
+  settings: {
+    onRender: r => {
+      rotateY(r.uniforms.uModelMatrix.value, step * 2);
+    },
+  },
+});
+```
+
+The `uModelMatrix` uniform is shared across all instances, so updating it rotates the entire scene.
+
+<Tip>
+  The model matrix transforms are applied to all instances. Use this for global effects like rotation, scaling, or translation.
+</Tip>
+
+### Multiple instances
+
+Create multiple particle systems with different properties:
+
+```javascript
+function addInstance() {
+  count += 1;
+  
+  // Unique configuration for this instance
+  const attributes = [...];
+  
+  phenomenon.add(count, {
+    attributes,
+    multiplier,
+    vertex,
+    fragment,
+    uniforms,
+  });
+}
+
+// Add 10 instances
+for (let i = 0; i < 10; i += 1) {
+  addInstance();
+}
+```
+
+Each instance has its own:
+- Unique key (the `count` variable)
+- Attributes (positions, colors)
+- Uniforms (progress value)
+- Render callback
+
+### Color cycling
+
+Cycle through predefined colors for each instance:
+
+```javascript
+const colors = [
+  [255, 108, 0],    // Orange
+  [83, 109, 254],   // Blue
+  [29, 233, 182],   // Teal
+  [253, 216, 53]    // Yellow
+].map(color => rgbToHsl(color));
+
+// In addInstance():
+{
+  name: 'aColor',
+  data: () => colors[count % 4],
+  size: 3,
+}
+```
+
+The modulo operator (`%`) cycles through the color array.
+
+### Cube formation
+
+Create a cube-like shape by clustering particles around a center point:
+
+```javascript
+const start = {
+  x: getRandom(1),
+  y: getRandom(1),
+  z: getRandom(1),
+};
+
+{
+  name: 'aPositionStart',
+  data: () => [
+    start.x + getRandom(0.1),  // Small random offset
+    start.y + getRandom(0.1),
+    start.z + getRandom(0.1)
+  ],
+  size: 3,
+}
+```
+
+All particles are positioned near the base coordinates with a small random offset, creating a cube-like cluster.
+
+## Utility functions
+
+The demo uses helper functions for common operations:
+
+### Get random value
+
+```javascript
+function getRandom(max) {
+  return Math.random() * max * 2 - max;
+}
+```
+
+Returns a random number between `-max` and `max`.
+
+### RGB to HSL conversion
+
+```javascript
+function rgbToHsl([r, g, b]) {
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h, s, l = (max + min) / 2;
+
+  if (max === min) {
+    h = s = 0;
+  } else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+
+  return [h, s, l];
+}
+```
+
+### Y-axis rotation
+
+```javascript
+function rotateY(matrix, angle) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  
+  const m00 = matrix[0];
+  const m01 = matrix[1];
+  const m02 = matrix[2];
+  const m03 = matrix[3];
+  const m20 = matrix[8];
+  const m21 = matrix[9];
+  const m22 = matrix[10];
+  const m23 = matrix[11];
+  
+  matrix[0] = m00 * cos + m20 * sin;
+  matrix[1] = m01 * cos + m21 * sin;
+  matrix[2] = m02 * cos + m22 * sin;
+  matrix[3] = m03 * cos + m23 * sin;
+  matrix[8] = m20 * cos - m00 * sin;
+  matrix[9] = m21 * cos - m01 * sin;
+  matrix[10] = m22 * cos - m02 * sin;
+  matrix[11] = m23 * cos - m03 * sin;
+}
+```
+
+<Note>
+  These utility functions are included in the demo (`demo/src/utils.js`). You can adapt them for your own projects.
+</Note>
+
+## Performance considerations
+
+When working with multiple instances:
+
+- **Use fewer instances with higher multipliers** - This is more efficient than many instances with low multipliers
+- **Share uniforms** - Global uniforms like matrices are automatically shared
+- **Reuse attributes** - Use `prepareBuffer()` to reuse existing data instead of recalculating
+
+```javascript
+// Efficient: Reuse end position as new start position
+r.prepareBuffer({
+  name: 'aPositionStart',
+  data: r.attributes[1].data,  // Reuse existing data
+  size: 3,
+});
+
+// Less efficient: Recalculate all positions
+r.prepareAttribute({
+  name: 'aPositionStart',
+  data: () => [x, y, z],  // Recalculates for every particle
+  size: 3,
+});
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Particle cube demo"
+    icon="box"
+    href="https://codepen.io/cvaneenige/full/QBwbEY"
+  >
+    See a complete particle cube example
+  </Card>
+  
+  <Card
+    title="Dynamic instances"
+    icon="wand-magic-sparkles"
+    href="https://codepen.io/cvaneenige/full/ajNjaN"
+  >
+    Add and remove instances at runtime
+  </Card>
+</CardGroup>

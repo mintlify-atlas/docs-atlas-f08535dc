@@ -1,0 +1,293 @@
+---
+title: Instances
+description: Instances represent individual particle systems with their own shaders and attributes
+---
+
+An instance represents a single particle system in Phenomenon. Each instance has its own shader program, attributes, uniforms, and geometry. You can have multiple instances rendering simultaneously, each with different visual characteristics.
+
+## Creating instances
+
+Instances are created by calling `add()` on the renderer:
+
+```javascript
+const instance = renderer.add('myParticles', {
+  attributes: [
+    {
+      name: 'aPositionStart',
+      data: (i) => [Math.random(), Math.random(), Math.random()],
+      size: 3
+    },
+    {
+      name: 'aColor',
+      data: () => [1.0, 0.5, 0.0],
+      size: 3
+    }
+  ],
+  uniforms: {
+    uProgress: {
+      type: 'float',
+      value: 0.0
+    }
+  },
+  vertex: `
+    attribute vec3 aPositionStart;
+    attribute vec3 aPosition;
+    attribute vec3 aColor;
+    uniform float uProgress;
+    uniform mat4 uProjectionMatrix;
+    uniform mat4 uModelMatrix;
+    uniform mat4 uViewMatrix;
+    varying vec3 vColor;
+    
+    void main() {
+      gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(aPositionStart + aPosition, 1.0);
+      gl_PointSize = 1.0;
+      vColor = aColor;
+    }
+  `,
+  fragment: `
+    precision mediump float;
+    varying vec3 vColor;
+    
+    void main() {
+      gl_FragColor = vec4(vColor, 1.0);
+    }
+  `,
+  multiplier: 4000,
+  mode: 0
+});
+```
+
+## Instance properties
+
+### Required properties
+
+- **attributes**: Array of attribute definitions (see [Attributes and uniforms](/concepts/attributes-uniforms))
+- **uniforms**: Object mapping uniform names to their definitions
+- **vertex**: Vertex shader source code as a string
+- **fragment**: Fragment shader source code as a string
+
+### Optional properties
+
+- **multiplier**: Number of particles to create (default: `1`)
+- **mode**: WebGL drawing mode (default: `0` for `POINTS`)
+- **geometry**: Vertex data for base geometry
+- **modifiers**: Functions to modify attribute data during preparation
+
+## The multiplier system
+
+The `multiplier` determines how many particles are rendered. Phenomenon duplicates your geometry and attributes for each particle:
+
+```javascript
+const instance = renderer.add('particles', {
+  multiplier: 4000,
+  attributes: [
+    {
+      name: 'aPositionStart',
+      data: (i) => [
+        Math.random() * 2 - 1,
+        Math.random() * 2 - 1,
+        Math.random() * 2 - 1
+      ],
+      size: 3
+    }
+  ],
+  // ...
+});
+```
+
+The `data` function receives the particle index `i` (0 to multiplier-1) as its first parameter, allowing you to generate unique data for each particle.
+
+<Tip>
+The total vertex count is `multiplier * geometry.vertices.length`. With default geometry (1 vertex) and a multiplier of 4000, you'll render 4000 particles.
+</Tip>
+
+## Drawing modes
+
+The `mode` property controls how WebGL interprets the vertices:
+
+```javascript
+// Render as points (particles)
+mode: 0  // gl.POINTS
+
+// Render as lines
+mode: 1  // gl.LINES
+
+// Render as triangles
+mode: 4  // gl.TRIANGLES
+```
+
+<Info>
+Points mode (`0`) is the most common for particle systems. Each vertex becomes a single pixel or point sprite.
+</Info>
+
+## Custom geometry
+
+By default, instances use a single vertex at the origin. You can provide custom geometry:
+
+```javascript
+const instance = renderer.add('cubes', {
+  geometry: {
+    vertices: [
+      { x: -0.5, y: -0.5, z: -0.5 },
+      { x:  0.5, y: -0.5, z: -0.5 },
+      { x:  0.5, y:  0.5, z: -0.5 },
+      { x: -0.5, y:  0.5, z: -0.5 },
+      // ... more vertices
+    ]
+  },
+  mode: 4, // TRIANGLES
+  multiplier: 100
+});
+```
+
+This creates 100 instances of your custom geometry.
+
+## Per-frame updates
+
+Use the `onRender` callback to update instance uniforms each frame:
+
+```javascript
+let forward = true;
+
+const instance = renderer.add('particles', {
+  uniforms: {
+    uProgress: {
+      type: 'float',
+      value: 0.0
+    }
+  },
+  onRender: (instance) => {
+    const { uProgress } = instance.uniforms;
+    uProgress.value += forward ? 0.01 : -0.01;
+    
+    if (uProgress.value >= 1) forward = false;
+    if (uProgress.value <= 0) forward = true;
+  },
+  // ...
+});
+```
+
+The callback receives the instance as its parameter, giving you access to `instance.uniforms`, `instance.attributes`, and all other properties.
+
+## Dynamic attributes
+
+You can update attribute data at runtime using `prepareAttribute()` and `prepareBuffer()`:
+
+```javascript
+const instance = renderer.add('particles', {
+  attributes: [
+    {
+      name: 'aPositionEnd',
+      data: () => [Math.random(), Math.random(), Math.random()],
+      size: 3
+    }
+  ],
+  onRender: (instance) => {
+    if (instance.uniforms.uProgress.value >= 1) {
+      // Generate new end positions
+      instance.prepareAttribute({
+        name: 'aPositionEnd',
+        data: () => [
+          Math.random() * 2 - 1,
+          Math.random() * 2 - 1,
+          Math.random() * 2 - 1
+        ],
+        size: 3
+      });
+      instance.uniforms.uProgress.value = 0;
+    }
+  },
+  // ...
+});
+```
+
+<Warning>
+Updating attributes is expensive. Use it sparingly and only when necessary, as it recreates GPU buffers.
+</Warning>
+
+## Attribute modifiers
+
+Modifiers let you transform attribute data during preparation:
+
+```javascript
+const instance = renderer.add('particles', {
+  attributes: [
+    {
+      name: 'aCustom',
+      data: (i) => [i / 100, 0.5, 0.8],
+      size: 3
+    }
+  ],
+  modifiers: {
+    aCustom: (data, vertexIndex, componentIndex, instance) => {
+      // Transform the data value
+      return data[componentIndex] * 2.0;
+    }
+  },
+  // ...
+});
+```
+
+The modifier function receives:
+- `data`: The raw data array from the attribute
+- `vertexIndex`: Current vertex (0 to vertices.length-1)
+- `componentIndex`: Current component (0 to size-1)
+- `instance`: The instance object
+
+## Instance lifecycle
+
+### Initialization
+
+When you call `add()`, the instance:
+1. Compiles vertex and fragment shaders
+2. Links the shader program
+3. Prepares all uniforms and gets their locations
+4. Prepares all attributes and creates GPU buffers
+
+### Rendering
+
+Each frame, the renderer:
+1. Activates the instance's shader program
+2. Binds all attribute buffers
+3. Updates uniforms (both shared and instance-specific)
+4. Calls `gl.drawArrays()` to render particles
+5. Invokes the `onRender` callback if provided
+
+### Cleanup
+
+When removed or destroyed, the instance:
+1. Deletes all GPU buffers
+2. Deletes the shader program
+3. Clears the WebGL context reference
+
+## Accessing instance properties
+
+The instance object returned by `add()` exposes these properties:
+
+```javascript
+const instance = renderer.add('particles', {...});
+
+// WebGL objects
+instance.gl              // WebGLRenderingContext
+instance.program         // WebGLProgram
+instance.buffers         // Array of buffer objects
+
+// Shader source
+instance.vertex          // Vertex shader string
+instance.fragment        // Fragment shader string
+
+// Data
+instance.attributes      // Array of attribute definitions
+instance.uniforms        // Object of uniform definitions
+instance.geometry        // Geometry data
+
+// Configuration
+instance.multiplier      // Number of particles
+instance.mode            // Drawing mode
+instance.modifiers       // Attribute modifier functions
+```
+
+<Note>
+You typically don't need to access these properties directly. Use the `onRender` callback for most runtime updates.
+</Note>

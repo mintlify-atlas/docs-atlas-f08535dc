@@ -1,0 +1,388 @@
+---
+title: Attributes and uniforms
+description: Pass data from JavaScript to your shaders using attributes and uniforms
+---
+
+Attributes and uniforms are how you pass data from JavaScript to your shaders. Attributes provide per-vertex data, while uniforms provide global values that apply to all vertices.
+
+## Attributes
+
+Attributes send unique data to each vertex. In particle systems, this typically includes positions, colors, sizes, and timing offsets.
+
+### Defining attributes
+
+Each attribute requires three properties:
+
+```javascript
+const attributes = [
+  {
+    name: 'aPositionStart',
+    data: (i, total) => [
+      Math.random() * 2 - 1,
+      Math.random() * 2 - 1,
+      Math.random() * 2 - 1
+    ],
+    size: 3
+  },
+  {
+    name: 'aColor',
+    data: () => [1.0, 0.42, 0.0],
+    size: 3
+  },
+  {
+    name: 'aOffset',
+    data: (i, total) => [i * ((1 - 0.6) / (total - 1))],
+    size: 1
+  }
+];
+```
+
+### Attribute properties
+
+- **name**: The attribute identifier used in your shader (e.g., `aPositionStart`)
+- **data**: Function that returns an array of values for each particle
+- **size**: Number of components (1 for float, 2 for vec2, 3 for vec3, 4 for vec4)
+
+<Tip>
+Prefix attribute names with `a` to follow GLSL conventions (e.g., `aPosition`, `aColor`).
+</Tip>
+
+### The data function
+
+The `data` function is called once for each particle (multiplier times):
+
+```javascript
+{
+  name: 'aPositionStart',
+  data: (i, total) => {
+    // i: particle index (0 to total-1)
+    // total: multiplier value
+    const angle = (i / total) * Math.PI * 2;
+    return [
+      Math.cos(angle),
+      Math.sin(angle),
+      0
+    ];
+  },
+  size: 3
+}
+```
+
+Return an array with exactly `size` elements.
+
+### Using attributes in shaders
+
+Declare attributes in your vertex shader:
+
+```glsl
+attribute vec3 aPositionStart;
+attribute vec3 aPositionEnd;
+attribute vec3 aColor;
+attribute float aOffset;
+
+void main() {
+  // Use the attribute values
+  vec3 position = mix(aPositionStart, aPositionEnd, uProgress);
+  gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(position, 1.0);
+}
+```
+
+### Built-in attributes
+
+Phenomenon automatically creates two attributes if you provide geometry:
+
+- **aPosition**: Base vertex position from `geometry.vertices` (vec3)
+- **aNormal**: Vertex normal from `geometry.normal` (vec3)
+
+You can use these alongside your custom attributes:
+
+```javascript
+const instance = renderer.add('particles', {
+  geometry: {
+    vertices: [{ x: 0, y: 0, z: 0 }]
+  },
+  attributes: [
+    {
+      name: 'aPositionStart',
+      data: () => [Math.random(), Math.random(), Math.random()],
+      size: 3
+    }
+  ],
+  vertex: `
+    attribute vec3 aPosition;      // Built-in
+    attribute vec3 aPositionStart; // Custom
+    
+    void main() {
+      // Combine base position with custom position
+      vec3 finalPosition = aPosition + aPositionStart;
+      // ...
+    }
+  `
+});
+```
+
+<Info>
+With default geometry, `aPosition` is `(0, 0, 0)` for all particles, so you can ignore it if you're positioning particles entirely through custom attributes.
+</Info>
+
+## Uniforms
+
+Uniforms provide global values that remain constant for all vertices in a single draw call. They're perfect for time, progress values, colors, and transformation matrices.
+
+### Defining uniforms
+
+Each uniform requires a type and initial value:
+
+```javascript
+const uniforms = {
+  uProgress: {
+    type: 'float',
+    value: 0.0
+  },
+  uColor: {
+    type: 'vec3',
+    value: [1.0, 0.5, 0.0]
+  },
+  uScale: {
+    type: 'vec2',
+    value: [1.0, 1.0]
+  },
+  uTransform: {
+    type: 'mat4',
+    value: [
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 1, 0,
+      0, 0, 0, 1
+    ]
+  }
+};
+```
+
+### Uniform types
+
+Phenomenon supports these GLSL types:
+
+| Type | GLSL Type | Value Format |
+|------|-----------|-------------|
+| `float` | `float` | Single number: `0.5` |
+| `vec2` | `vec2` | Array of 2: `[1.0, 0.5]` |
+| `vec3` | `vec3` | Array of 3: `[1.0, 0.5, 0.0]` |
+| `vec4` | `vec4` | Array of 4: `[1.0, 0.5, 0.0, 1.0]` |
+| `mat2` | `mat2` | Array of 4: `[1, 0, 0, 1]` |
+| `mat3` | `mat3` | Array of 9 |
+| `mat4` | `mat4` | Array of 16 |
+
+<Warning>
+Matrix values must be in column-major order, which is the default for WebGL.
+</Warning>
+
+### Using uniforms in shaders
+
+Declare uniforms in vertex or fragment shaders:
+
+```glsl
+// Vertex shader
+uniform float uProgress;
+uniform vec3 uColor;
+uniform mat4 uProjectionMatrix;
+
+void main() {
+  // Use uniform values
+  float t = uProgress * 2.0;
+  // ...
+}
+```
+
+```glsl
+// Fragment shader
+precision mediump float;
+uniform vec3 uColor;
+
+void main() {
+  gl_FragColor = vec4(uColor, 1.0);
+}
+```
+
+### Updating uniforms
+
+Update uniform values in the `onRender` callback:
+
+```javascript
+let forward = true;
+
+const instance = renderer.add('particles', {
+  uniforms: {
+    uProgress: {
+      type: 'float',
+      value: 0.0
+    }
+  },
+  onRender: (instance) => {
+    // Access and modify uniforms
+    const { uProgress } = instance.uniforms;
+    uProgress.value += forward ? 0.01 : -0.01;
+    
+    if (uProgress.value >= 1) forward = false;
+    if (uProgress.value <= 0) forward = true;
+  },
+  // ...
+});
+```
+
+You can also update from the renderer's callback:
+
+```javascript
+const renderer = new Phenomenon({
+  settings: {
+    onRender: (r) => {
+      const instance = r.instances.get('particles');
+      instance.uniforms.uTime.value += 0.016;
+    }
+  }
+});
+```
+
+### Shared uniforms
+
+The renderer provides three matrix uniforms to all instances:
+
+```javascript
+// These are automatically available in every instance
+uProjectionMatrix  // mat4 - Perspective projection
+uViewMatrix        // mat4 - View transformation  
+uModelMatrix       // mat4 - Model transformation
+```
+
+Use them in your vertex shader for proper 3D positioning:
+
+```glsl
+attribute vec3 aPosition;
+uniform mat4 uProjectionMatrix;
+uniform mat4 uModelMatrix;
+uniform mat4 uViewMatrix;
+
+void main() {
+  gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(aPosition, 1.0);
+}
+```
+
+<Note>
+You must declare these uniforms in your shader even though they're provided automatically.
+</Note>
+
+## Passing data between shaders
+
+Use varying variables to pass data from vertex to fragment shaders:
+
+```glsl
+// Vertex shader
+attribute vec3 aColor;
+varying vec3 vColor;
+
+void main() {
+  vColor = aColor; // Pass to fragment shader
+  // ...
+}
+```
+
+```glsl
+// Fragment shader
+precision mediump float;
+varying vec3 vColor;
+
+void main() {
+  gl_FragColor = vec4(vColor, 1.0); // Use the value
+}
+```
+
+<Tip>
+Prefix varying variables with `v` to distinguish them from attributes and uniforms.
+</Tip>
+
+## Real-world example
+
+Here's a complete example showing attributes and uniforms working together:
+
+```javascript
+const duration = 0.6;
+const multiplier = 4000;
+
+const instance = renderer.add('particles', {
+  multiplier,
+  attributes: [
+    {
+      name: 'aPositionStart',
+      data: () => [
+        Math.random() * 2 - 1,
+        Math.random() * 2 - 1,
+        Math.random() * 2 - 1
+      ],
+      size: 3
+    },
+    {
+      name: 'aPositionEnd',
+      data: () => [
+        Math.random() * 2 - 1,
+        Math.random() * 2 - 1,
+        Math.random() * 2 - 1
+      ],
+      size: 3
+    },
+    {
+      name: 'aColor',
+      data: () => [1.0, 0.42, 0.65],
+      size: 3
+    },
+    {
+      name: 'aOffset',
+      data: (i) => [i * ((1 - duration) / (multiplier - 1))],
+      size: 1
+    }
+  ],
+  uniforms: {
+    uProgress: {
+      type: 'float',
+      value: 0.0
+    }
+  },
+  vertex: `
+    attribute vec3 aPositionStart;
+    attribute vec3 aPositionEnd;
+    attribute vec3 aPosition;
+    attribute vec3 aColor;
+    attribute float aOffset;
+    
+    uniform float uProgress;
+    uniform mat4 uProjectionMatrix;
+    uniform mat4 uModelMatrix;
+    uniform mat4 uViewMatrix;
+    
+    varying vec3 vColor;
+    
+    void main() {
+      float t = min(1.0, max(0.0, (uProgress - aOffset)) / ${duration});
+      vec3 position = mix(aPositionStart, aPositionEnd, t);
+      gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(position + aPosition, 1.0);
+      gl_PointSize = 1.0;
+      vColor = aColor;
+    }
+  `,
+  fragment: `
+    precision mediump float;
+    varying vec3 vColor;
+    
+    void main() {
+      gl_FragColor = vec4(vColor, 1.0);
+    }
+  `,
+  onRender: (instance) => {
+    instance.uniforms.uProgress.value += 0.01;
+    if (instance.uniforms.uProgress.value > 1) {
+      instance.uniforms.uProgress.value = 0;
+    }
+  }
+});
+```
+
+This creates 4000 particles that animate from random start positions to random end positions, with each particle's animation offset slightly in time.

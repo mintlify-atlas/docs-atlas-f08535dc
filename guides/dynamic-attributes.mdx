@@ -1,0 +1,424 @@
+---
+title: Using dynamic attributes
+description: Learn how to update particle attributes in real-time for continuous animations
+---
+
+By default, attributes are calculated once when an instance is created. Dynamic attributes allow you to recalculate and update attribute data during runtime, enabling continuous, evolving particle animations.
+
+## Why use dynamic attributes
+
+Dynamic attributes are essential when you need to:
+- Create looping animations without reversing direction
+- Update particle positions based on user interaction
+- Morph between multiple target positions
+- Implement particle physics simulations
+
+<Note>
+  Attribute calculations happen on the CPU, so use them judiciously with large particle counts. See [performance considerations](#performance-considerations) below.
+</Note>
+
+## Basic attribute updating
+
+Use `prepareAttribute()` to recalculate an attribute with new data:
+
+```javascript
+phenomenon.add('particles', {
+  attributes,
+  multiplier: 4000,
+  vertex,
+  fragment,
+  uniforms,
+  onRender: instance => {
+    const { uProgress } = instance.uniforms;
+    uProgress.value += 0.01;
+
+    if (uProgress.value >= 1) {
+      // Recalculate the end position attribute
+      const newEnd = {
+        x: getRandom(1),
+        y: getRandom(1),
+        z: getRandom(1),
+      };
+      
+      instance.prepareAttribute({
+        name: 'aPositionEnd',
+        data: () => [
+          newEnd.x + getRandom(0.1),
+          newEnd.y + getRandom(0.1),
+          newEnd.z + getRandom(0.1),
+        ],
+        size: 3,
+      });
+      
+      uProgress.value = 0;
+    }
+  },
+});
+```
+
+<Warning>
+  `prepareAttribute()` recalculates data for all particles using the data function. This is CPU-intensive with high multipliers.
+</Warning>
+
+## Efficient attribute switching
+
+When you want to reuse existing data instead of recalculating it, use `prepareBuffer()` to directly update the buffer:
+
+```javascript
+onRender: instance => {
+  const { uProgress } = instance.uniforms;
+  uProgress.value += 0.01;
+
+  if (uProgress.value >= 1) {
+    // Copy the end position data to start position
+    instance.prepareBuffer({
+      name: 'aPositionStart',
+      data: instance.attributes[1].data, // Reuse existing data
+      size: 3,
+    });
+    
+    // Calculate new end position
+    instance.prepareAttribute({
+      name: 'aPositionEnd',
+      data: () => [
+        newEnd.x + getRandom(0.1),
+        newEnd.y + getRandom(0.1),
+        newEnd.z + getRandom(0.1),
+      ],
+      size: 3,
+    });
+    
+    uProgress.value = 0;
+  }
+}
+```
+
+<Tip>
+  `prepareBuffer()` only updates the GPU buffer with existing data—no recalculation happens. This is much faster than `prepareAttribute()` when you're reusing data.
+</Tip>
+
+## Understanding the difference
+
+<Steps>
+  <Step title="prepareAttribute()">
+    Recalculates attribute data using the data function, then uploads to GPU.
+
+    ```javascript
+    instance.prepareAttribute({
+      name: 'aPositionEnd',
+      data: () => [Math.random(), Math.random(), Math.random()],
+      size: 3,
+    });
+    ```
+
+    **When to use:**
+    - You need new, calculated values
+    - Data depends on particle index or multiplier
+    - Implementing physics or procedural generation
+  </Step>
+
+  <Step title="prepareBuffer()">
+    Uploads existing data directly to the GPU buffer without recalculation.
+
+    ```javascript
+    instance.prepareBuffer({
+      name: 'aPositionStart',
+      data: instance.attributes[1].data,
+      size: 3,
+    });
+    ```
+
+    **When to use:**
+    - Copying data from another attribute
+    - Using pre-computed arrays
+    - Swapping between predefined states
+  </Step>
+</Steps>
+
+## Real-world example: Continuous transitions
+
+This example from the demo creates a continuous particle animation that seamlessly transitions between random positions:
+
+```javascript
+const dynamicAttributes = true;
+const step = 0.01;
+const duration = 0.6;
+const multiplier = 4000;
+
+const start = {
+  x: getRandom(1),
+  y: getRandom(1),
+  z: getRandom(1),
+};
+
+const end = {
+  x: getRandom(1),
+  y: getRandom(1),
+  z: getRandom(1),
+};
+
+const attributes = [
+  {
+    name: 'aPositionStart',
+    data: () => [
+      start.x + getRandom(0.1),
+      start.y + getRandom(0.1),
+      start.z + getRandom(0.1)
+    ],
+    size: 3,
+  },
+  {
+    name: 'aPositionEnd',
+    data: () => [
+      end.x + getRandom(0.1),
+      end.y + getRandom(0.1),
+      end.z + getRandom(0.1)
+    ],
+    size: 3,
+  },
+];
+
+const uniforms = {
+  uProgress: {
+    type: 'float',
+    value: 0.0,
+  },
+};
+
+let forward = true;
+
+phenomenon.add('continuousParticles', {
+  attributes,
+  multiplier,
+  vertex,
+  fragment,
+  uniforms,
+  onRender: instance => {
+    const { uProgress } = instance.uniforms;
+    uProgress.value += forward ? step : -step;
+
+    if (uProgress.value >= 1) {
+      if (dynamicAttributes) {
+        // Create new random end position
+        const newEnd = {
+          x: getRandom(1),
+          y: getRandom(1),
+          z: getRandom(1),
+        };
+        
+        // Current end becomes new start (no recalculation)
+        instance.prepareBuffer({
+          name: 'aPositionStart',
+          data: instance.attributes[1].data,
+          size: 3,
+        });
+        
+        // Calculate new end position
+        instance.prepareAttribute({
+          name: 'aPositionEnd',
+          data: () => [
+            newEnd.x + getRandom(0.1),
+            newEnd.y + getRandom(0.1),
+            newEnd.z + getRandom(0.1),
+          ],
+          size: 3,
+        });
+        
+        uProgress.value = 0;
+      } else {
+        forward = false;
+      }
+    } else if (uProgress.value <= 0) {
+      forward = true;
+    }
+  },
+});
+```
+
+<Tip>
+  This pattern creates seamless looping: when particles reach their destination, that position becomes the new starting point, and a new destination is generated. This prevents abrupt jumps or reversing animations.
+</Tip>
+
+## Accessing attribute data
+
+Attributes are stored in the instance's `attributes` array. Each attribute contains:
+
+```javascript
+{
+  name: 'aPositionEnd',    // Attribute name
+  size: 3,                 // Number of values per particle
+  data: Float32Array(...)  // The actual data buffer
+}
+```
+
+You can access attributes by their array index (based on order of creation) or by finding them:
+
+```javascript
+// By index (if you know the order)
+const endPositionData = instance.attributes[1].data;
+
+// By name (more reliable)
+const attributeIndex = instance.attributeKeys.indexOf('aPositionEnd');
+const endPositionData = instance.attributes[attributeIndex].data;
+```
+
+## Performance considerations
+
+<Warning>
+  The calculation of the data function happens on the CPU. Monitor your frame rate when using dynamic attributes with high multipliers.
+</Warning>
+
+### Optimization strategies
+
+<Steps>
+  <Step title="Limit update frequency">
+    Don't update attributes every frame if you don't need to:
+
+    ```javascript
+    let frameCount = 0;
+    onRender: instance => {
+      frameCount++;
+      
+      // Only update every 10 frames
+      if (frameCount % 10 === 0 && shouldUpdate) {
+        instance.prepareAttribute({
+          name: 'aPosition',
+          data: () => [Math.random(), Math.random(), Math.random()],
+          size: 3,
+        });
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Use prepareBuffer() when possible">
+    Reuse existing data instead of recalculating:
+
+    ```javascript
+    // SLOW: Recalculates all particle data
+    instance.prepareAttribute({
+      name: 'aPosition',
+      data: () => instance.attributes[0].data,
+      size: 3,
+    });
+
+    // FAST: Directly copies buffer
+    instance.prepareBuffer({
+      name: 'aPosition',
+      data: instance.attributes[0].data,
+      size: 3,
+    });
+    ```
+  </Step>
+
+  <Step title="Reduce multiplier">
+    Lower multiplier values mean fewer particles to update:
+
+    ```javascript
+    // May drop frames with dynamic attributes
+    multiplier: 100000
+
+    // More manageable for CPU calculations
+    multiplier: 10000
+    ```
+  </Step>
+
+  <Step title="Pre-calculate when possible">
+    Generate attribute states ahead of time and swap between them:
+
+    ```javascript
+    // Pre-calculate multiple positions
+    const positions = Array.from({ length: 5 }, () => 
+      new Float32Array(multiplier * 3).map(() => Math.random())
+    );
+
+    let currentPosition = 0;
+
+    onRender: instance => {
+      if (shouldSwitch) {
+        currentPosition = (currentPosition + 1) % positions.length;
+        instance.prepareBuffer({
+          name: 'aPosition',
+          data: positions[currentPosition],
+          size: 3,
+        });
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Testing performance
+
+Monitor frame drops when using dynamic attributes:
+
+```javascript
+let lastTime = performance.now();
+let frames = 0;
+
+const phenomenon = new Phenomenon({
+  settings: {
+    onRender: renderer => {
+      frames++;
+      const now = performance.now();
+      
+      if (now - lastTime >= 1000) {
+        console.log(`FPS: ${frames}`);
+        frames = 0;
+        lastTime = now;
+      }
+    },
+  },
+});
+```
+
+<Note>
+  Target 60 FPS for smooth animations. If you're seeing drops below 30 FPS, reduce your multiplier or update frequency.
+</Note>
+
+## When to avoid dynamic attributes
+
+Dynamic attributes are powerful but not always necessary. Consider these alternatives:
+
+<Accordion title="Use uniforms instead">
+  If all particles share the same update pattern, use uniforms:
+
+  ```javascript
+  // Instead of updating position attributes
+  uniform float uTime;
+  
+  void main(){
+    vec3 pos = aPosition + vec3(sin(uTime), cos(uTime), 0.0);
+    gl_Position = /* ... */ vec4(pos, 1.0);
+  }
+  ```
+</Accordion>
+
+<Accordion title="Use shader math">
+  Complex patterns can often be achieved with shader calculations:
+
+  ```javascript
+  // Instead of pre-calculating easing
+  attribute float aIndex;
+  uniform float uProgress;
+  
+  void main(){
+    float offset = aIndex / ${multiplier.toFixed(1)};
+    float t = mod(uProgress + offset, 1.0);
+    vec3 pos = mix(aStart, aEnd, easeInOut(t));
+    gl_Position = /* ... */ vec4(pos, 1.0);
+  }
+  ```
+</Accordion>
+
+<Accordion title="Use modifiers">
+  For one-time transformations during initialization, use modifiers:
+
+  ```javascript
+  modifiers: {
+    aPosition: (data, index, offset, instance) => {
+      return data[offset] * Math.random();
+    },
+  }
+  ```
+</Accordion>

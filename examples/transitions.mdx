@@ -1,0 +1,300 @@
+---
+title: Particle transitions
+description: Animate particles between positions with smooth easing
+---
+
+This example demonstrates how to create smooth transitions between particle positions using uniforms, easing functions, and dynamic attributes.
+
+<Card
+  title="View live demo"
+  icon="arrow-up-right-from-square"
+  href="https://codepen.io/cvaneenige/full/Lmrzmd"
+>
+  See transitions in action on CodePen
+</Card>
+
+## Complete example
+
+Here's a complete example that transitions particles between two positions:
+
+```javascript
+import Phenomenon from 'phenomenon';
+
+const phenomenon = new Phenomenon({
+  settings: {
+    devicePixelRatio: 1,
+    position: { x: 0, y: 0, z: 3 },
+  },
+});
+
+const multiplier = 4000;
+const duration = 0.6;
+const step = 0.01;
+
+// Random position helper
+function getRandom(max) {
+  return Math.random() * max * 2 - max;
+}
+
+// Base positions
+const start = {
+  x: getRandom(1),
+  y: getRandom(1),
+  z: getRandom(1),
+};
+
+const end = {
+  x: getRandom(1),
+  y: getRandom(1),
+  z: getRandom(1),
+};
+
+// Define attributes
+const attributes = [
+  {
+    name: 'aPositionStart',
+    data: () => [
+      start.x + getRandom(0.1),
+      start.y + getRandom(0.1),
+      start.z + getRandom(0.1)
+    ],
+    size: 3,
+  },
+  {
+    name: 'aPositionEnd',
+    data: () => [
+      end.x + getRandom(0.1),
+      end.y + getRandom(0.1),
+      end.z + getRandom(0.1)
+    ],
+    size: 3,
+  },
+  {
+    name: 'aColor',
+    data: () => [0.325, 0.427, 0.996],
+    size: 3,
+  },
+  {
+    name: 'aOffset',
+    data: i => [i * ((1 - duration) / (multiplier - 1))],
+    size: 1,
+  },
+];
+
+// Progress uniform
+const uniforms = {
+  uProgress: {
+    type: 'float',
+    value: 0.0,
+  },
+};
+
+// Vertex shader with easing
+const vertex = `
+  attribute vec3 aPositionStart;
+  attribute vec3 aPositionEnd;
+  attribute vec3 aPosition;
+  attribute vec3 aColor;
+  attribute float aOffset;
+
+  uniform float uProgress;
+  uniform mat4 uProjectionMatrix;
+  uniform mat4 uModelMatrix;
+  uniform mat4 uViewMatrix;
+
+  varying vec3 vColor;
+
+  float easeInOutQuint(float t){
+    return t < 0.5 ? 16.0 * t * t * t * t * t : 1.0 + 16.0 * (--t) * t * t * t * t;
+  }
+
+  void main(){
+    float tProgress = easeInOutQuint(min(1.0, max(0.0, (uProgress - aOffset)) / ${duration}));
+    vec3 newPosition = mix(aPositionStart, aPositionEnd, tProgress);
+    gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(newPosition + aPosition, 1.0);
+    gl_PointSize = 1.0;
+    vColor = aColor;
+  }
+`;
+
+const fragment = `
+  precision mediump float;
+
+  varying vec3 vColor;
+
+  void main(){
+    gl_FragColor = vec4(vColor, 1.0);
+  }
+`;
+
+let forward = true;
+
+// Add instance with animation
+phenomenon.add('particles', {
+  attributes,
+  multiplier,
+  vertex,
+  fragment,
+  uniforms,
+  onRender: r => {
+    const { uProgress } = r.uniforms;
+    uProgress.value += forward ? step : -step;
+
+    if (uProgress.value >= 1) {
+      forward = false;
+    } else if (uProgress.value <= 0) {
+      forward = true;
+    }
+  },
+});
+```
+
+## Key concepts
+
+### Start and end positions
+
+Define two sets of positions for each particle:
+
+```javascript
+const attributes = [
+  {
+    name: 'aPositionStart',
+    data: () => [x1, y1, z1],
+    size: 3,
+  },
+  {
+    name: 'aPositionEnd',
+    data: () => [x2, y2, z2],
+    size: 3,
+  },
+];
+```
+
+### Progress uniform
+
+Use a uniform to control the transition progress:
+
+```javascript
+const uniforms = {
+  uProgress: {
+    type: 'float',
+    value: 0.0,  // 0 = start, 1 = end
+  },
+};
+```
+
+<Tip>
+  Uniforms can be updated every frame, making them perfect for animation values that affect all particles.
+</Tip>
+
+### Easing function
+
+Add smooth easing in the vertex shader:
+
+```glsl
+float easeInOutQuint(float t){
+  return t < 0.5 ? 16.0 * t * t * t * t * t : 1.0 + 16.0 * (--t) * t * t * t * t;
+}
+
+void main(){
+  float tProgress = easeInOutQuint(min(1.0, max(0.0, (uProgress - aOffset)) / 0.6));
+  vec3 newPosition = mix(aPositionStart, aPositionEnd, tProgress);
+  // ...
+}
+```
+
+The `mix()` function interpolates between start and end positions based on the eased progress value.
+
+### Staggered animation
+
+The `aOffset` attribute creates a staggered effect:
+
+```javascript
+{
+  name: 'aOffset',
+  data: i => [i * ((1 - duration) / (multiplier - 1))],
+  size: 1,
+}
+```
+
+Each particle starts its transition at a slightly different time, creating a wave effect.
+
+### Animation loop
+
+Update the progress uniform every frame:
+
+```javascript
+onRender: r => {
+  const { uProgress } = r.uniforms;
+  uProgress.value += forward ? step : -step;
+
+  if (uProgress.value >= 1) {
+    forward = false;
+  } else if (uProgress.value <= 0) {
+    forward = true;
+  }
+}
+```
+
+## Dynamic transitions
+
+You can create continuous transitions by dynamically updating attributes when a transition completes:
+
+```javascript
+onRender: r => {
+  const { uProgress } = r.uniforms;
+  uProgress.value += step;
+
+  if (uProgress.value >= 1) {
+    // Set start position to current end position
+    r.prepareBuffer({
+      name: 'aPositionStart',
+      data: r.attributes[1].data,
+      size: 3,
+    });
+    
+    // Generate new end position
+    const newEnd = {
+      x: getRandom(1),
+      y: getRandom(1),
+      z: getRandom(1),
+    };
+    
+    r.prepareAttribute({
+      name: 'aPositionEnd',
+      data: () => [
+        newEnd.x + getRandom(0.1),
+        newEnd.y + getRandom(0.1),
+        newEnd.z + getRandom(0.1),
+      ],
+      size: 3,
+    });
+    
+    uProgress.value = 0;
+  }
+}
+```
+
+<Note>
+  `prepareBuffer()` reuses existing data, while `prepareAttribute()` recalculates data using the provided function. The calculation happens on the CPU, so be mindful of performance with large particle counts.
+</Note>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Easing demo"
+    icon="wave-pulse"
+    href="https://codepen.io/cvaneenige/full/zjaydg"
+  >
+    Explore different easing functions
+  </Card>
+  
+  <Card
+    title="Shapes"
+    icon="cube"
+    href="/examples/shapes"
+  >
+    Combine transitions with 3D shapes
+  </Card>
+</CardGroup>

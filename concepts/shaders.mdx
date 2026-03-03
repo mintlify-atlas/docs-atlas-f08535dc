@@ -1,0 +1,383 @@
+---
+title: Shaders
+description: Write GLSL vertex and fragment shaders to control particle appearance and behavior
+---
+
+Shaders are programs that run on the GPU to determine how your particles look and move. Phenomenon requires two types of shaders: vertex shaders that calculate positions, and fragment shaders that determine colors.
+
+## Vertex shaders
+
+Vertex shaders run once per vertex (particle) to calculate its final screen position. This is where you implement movement, transformations, and animation logic.
+
+### Basic structure
+
+```glsl
+attribute vec3 aPositionStart;
+attribute vec3 aPosition;
+uniform float uProgress;
+uniform mat4 uProjectionMatrix;
+uniform mat4 uModelMatrix;
+uniform mat4 uViewMatrix;
+
+void main() {
+  vec3 position = aPositionStart * uProgress;
+  gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(position + aPosition, 1.0);
+  gl_PointSize = 1.0;
+}
+```
+
+### Required outputs
+
+- **gl_Position**: Final vertex position in clip space (vec4)
+- **gl_PointSize**: Size of the point in pixels (float)
+
+<Info>
+For particle systems, you typically render in points mode, so `gl_PointSize` controls how large each particle appears on screen.
+</Info>
+
+### Transformation pipeline
+
+Apply transformations in this order to correctly position particles in 3D space:
+
+```glsl
+vec3 localPosition = aPositionStart + aPosition;
+vec4 worldPosition = uModelMatrix * vec4(localPosition, 1.0);
+vec4 viewPosition = uViewMatrix * worldPosition;
+vec4 clipPosition = uProjectionMatrix * viewPosition;
+gl_Position = clipPosition;
+```
+
+Or more concisely:
+
+```glsl
+gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(localPosition, 1.0);
+```
+
+### Animation example
+
+Interpolate between start and end positions using uniforms:
+
+```glsl
+attribute vec3 aPositionStart;
+attribute vec3 aPositionEnd;
+attribute vec3 aPosition;
+attribute float aOffset;
+
+uniform float uProgress;
+uniform mat4 uProjectionMatrix;
+uniform mat4 uModelMatrix;
+uniform mat4 uViewMatrix;
+
+varying vec3 vColor;
+
+float easeInOutQuint(float t) {
+  return t < 0.5 ? 16.0 * t * t * t * t * t : 1.0 + 16.0 * (--t) * t * t * t * t;
+}
+
+void main() {
+  float duration = 0.6;
+  float t = easeInOutQuint(min(1.0, max(0.0, (uProgress - aOffset)) / duration));
+  vec3 newPosition = mix(aPositionStart, aPositionEnd, t);
+  gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(newPosition + aPosition, 1.0);
+  gl_PointSize = 1.0;
+}
+```
+
+This creates a staggered animation where each particle starts at a different time based on its `aOffset` value.
+
+<Tip>
+The `mix()` function linearly interpolates between two values. It's perfect for animating positions, colors, and other properties.
+</Tip>
+
+## Fragment shaders
+
+Fragment shaders run once per pixel to determine the final color. They receive varying values from the vertex shader.
+
+### Basic structure
+
+```glsl
+precision mediump float;
+
+void main() {
+  gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+}
+```
+
+### Precision qualifier
+
+Always declare precision for fragment shaders:
+
+```glsl
+precision mediump float;
+```
+
+<Warning>
+Without a precision qualifier, fragment shaders will fail to compile on many devices.
+</Warning>
+
+### Using varyings
+
+Pass data from vertex to fragment shader using varying variables:
+
+```glsl
+// Vertex shader
+attribute vec3 aColor;
+varying vec3 vColor;
+
+void main() {
+  vColor = aColor;
+  // ...
+}
+```
+
+```glsl
+// Fragment shader
+precision mediump float;
+varying vec3 vColor;
+
+void main() {
+  gl_FragColor = vec4(vColor, 1.0);
+}
+```
+
+### Color manipulation
+
+Create interesting effects by manipulating colors in the fragment shader:
+
+```glsl
+precision mediump float;
+varying vec3 vColor;
+uniform float uProgress;
+
+void main() {
+  // Fade out based on progress
+  float alpha = 1.0 - uProgress;
+  gl_FragColor = vec4(vColor, alpha);
+}
+```
+
+```glsl
+precision mediump float;
+varying vec3 vColor;
+
+void main() {
+  // Brighten colors
+  vec3 brightColor = vColor * 1.5;
+  gl_FragColor = vec4(brightColor, 1.0);
+}
+```
+
+## Passing shaders to instances
+
+Provide shader source code as strings when creating an instance:
+
+```javascript
+const instance = renderer.add('particles', {
+  vertex: `
+    attribute vec3 aPositionStart;
+    attribute vec3 aPosition;
+    attribute vec3 aColor;
+    
+    uniform float uProgress;
+    uniform mat4 uProjectionMatrix;
+    uniform mat4 uModelMatrix;
+    uniform mat4 uViewMatrix;
+    
+    varying vec3 vColor;
+    
+    void main() {
+      gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(aPositionStart + aPosition, 1.0);
+      gl_PointSize = 1.0;
+      vColor = aColor;
+    }
+  `,
+  fragment: `
+    precision mediump float;
+    varying vec3 vColor;
+    
+    void main() {
+      gl_FragColor = vec4(vColor, 1.0);
+    }
+  `,
+  // ...
+});
+```
+
+<Tip>
+Use template literals (backticks) to write multi-line shader code that's easier to read and maintain.
+</Tip>
+
+## Dynamic shader generation
+
+You can generate shader code dynamically using JavaScript:
+
+```javascript
+const duration = 0.6;
+const devicePixelRatio = window.devicePixelRatio || 1;
+
+const vertex = `
+  attribute vec3 aPositionStart;
+  attribute vec3 aPositionEnd;
+  attribute vec3 aPosition;
+  attribute float aOffset;
+  
+  uniform float uProgress;
+  uniform mat4 uProjectionMatrix;
+  uniform mat4 uModelMatrix;
+  uniform mat4 uViewMatrix;
+  
+  varying vec3 vColor;
+  
+  float easeInOutQuint(float t) {
+    return t < 0.5 ? 16.0 * t * t * t * t * t : 1.0 + 16.0 * (--t) * t * t * t * t;
+  }
+  
+  void main() {
+    float tProgress = easeInOutQuint(min(1.0, max(0.0, (uProgress - aOffset)) / ${duration}));
+    vec3 newPosition = mix(aPositionStart, aPositionEnd, tProgress);
+    gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(newPosition + aPosition, 1.0);
+    gl_PointSize = ${devicePixelRatio.toFixed(1)};
+    vColor = aColor;
+  }
+`;
+```
+
+This injects JavaScript values into your shader code at creation time.
+
+## Debugging shaders
+
+Enable debug mode to see shader compilation errors:
+
+```javascript
+const renderer = new Phenomenon({
+  debug: true
+});
+
+renderer.add('particles', {
+  vertex: `
+    // Shader with potential errors
+  `,
+  fragment: `
+    // Shader with potential errors
+  `
+});
+```
+
+Compilation errors will be logged to the console:
+
+```
+ERROR: 0:10: 'aPositio' : undeclared identifier
+ERROR: 0:10: 'assign' : cannot convert from 'const mediump float' to 'highp 3-component vector of float'
+```
+
+<Note>
+Shader errors include line numbers that correspond to your shader source code, making them easier to debug.
+</Note>
+
+## Common patterns
+
+### Particle trails with easing
+
+```glsl
+// Vertex shader
+float easeInOutQuint(float t) {
+  return t < 0.5 ? 16.0 * t * t * t * t * t : 1.0 + 16.0 * (--t) * t * t * t * t;
+}
+
+void main() {
+  float t = easeInOutQuint(uProgress);
+  vec3 position = mix(aPositionStart, aPositionEnd, t);
+  // ...
+}
+```
+
+### Color transitions
+
+```glsl
+// Vertex shader
+attribute vec3 aColorStart;
+attribute vec3 aColorEnd;
+varying vec3 vColor;
+
+void main() {
+  vColor = mix(aColorStart, aColorEnd, uProgress);
+  // ...
+}
+```
+
+### Size animation
+
+```glsl
+// Vertex shader
+attribute float aSize;
+uniform float uProgress;
+
+void main() {
+  float size = aSize * (1.0 + sin(uProgress * 3.14159) * 0.5);
+  gl_PointSize = size;
+  // ...
+}
+```
+
+### Distance-based effects
+
+```glsl
+// Vertex shader
+varying float vDistance;
+
+void main() {
+  vec4 worldPos = uModelMatrix * vec4(aPosition, 1.0);
+  vDistance = length(worldPos.xyz);
+  // ...
+}
+```
+
+```glsl
+// Fragment shader
+varying float vDistance;
+varying vec3 vColor;
+
+void main() {
+  float alpha = 1.0 - (vDistance / 5.0);
+  gl_FragColor = vec4(vColor, alpha);
+}
+```
+
+## Performance tips
+
+<Tip>
+- Keep shader calculations simple - they run for every vertex/pixel every frame
+- Prefer uniforms over varying variables when possible
+- Pre-calculate values in JavaScript instead of in shaders when appropriate
+- Use simpler math functions (addition/multiplication) over expensive ones (sin/cos/pow)
+</Tip>
+
+## GLSL resources
+
+Phenomenon uses GLSL ES 1.0 (WebGL 1.0 shaders). Key functions and features:
+
+### Built-in functions
+
+- **mix(a, b, t)**: Linear interpolation
+- **clamp(x, min, max)**: Constrain value
+- **smoothstep(edge0, edge1, x)**: Smooth interpolation
+- **length(v)**: Vector length
+- **normalize(v)**: Unit vector
+- **dot(a, b)**: Dot product
+- **cross(a, b)**: Cross product
+- **sin/cos/tan**: Trigonometric functions
+- **pow(x, y)**: Power function
+- **min/max/abs**: Mathematical operations
+
+### Vector swizzling
+
+```glsl
+vec3 color = vec3(1.0, 0.5, 0.0);
+vec2 rg = color.rg;      // (1.0, 0.5)
+vec3 bgr = color.bgr;    // (0.0, 0.5, 1.0)
+vec4 rgba = vec4(color.rgb, 1.0);
+```
+
+<Info>
+You can access vector components using `.xyzw`, `.rgba`, or `.stpq` notation interchangeably.
+</Info>

@@ -1,0 +1,315 @@
+---
+title: Types
+description: TypeScript interfaces and types for Phenomenon
+---
+
+Phenomenon is written in TypeScript and exports several interfaces for type-safe usage. This page documents all available types.
+
+## RendererProps
+
+Configuration options for creating a Renderer instance.
+
+```typescript
+interface RendererProps {
+  canvas?: HTMLCanvasElement;
+  context?: object;
+  contextType?: string;
+  settings?: object;
+  debug?: boolean;
+}
+```
+
+<ResponseField name="canvas" type="HTMLCanvasElement">
+  The canvas element to render to. Defaults to `document.querySelector('canvas')`.
+</ResponseField>
+
+<ResponseField name="context" type="object">
+  WebGL context attributes passed to `canvas.getContext()`. Common attributes include `alpha`, `antialias`, `depth`, `stencil`, etc.
+</ResponseField>
+
+<ResponseField name="contextType" type="string">
+  WebGL context type. Defaults to `'experimental-webgl'`. Use `'webgl'` or `'webgl2'` for other contexts.
+</ResponseField>
+
+<ResponseField name="settings" type="object">
+  Additional renderer settings including `devicePixelRatio`, `clearColor`, `position`, `clip`, `onSetup`, and `onRender`.
+</ResponseField>
+
+<ResponseField name="debug" type="boolean">
+  Enable shader compilation error logging. Defaults to `false`.
+</ResponseField>
+
+## InstanceProps
+
+Configuration options for creating a particle instance via `renderer.add()`.
+
+```typescript
+interface InstanceProps {
+  attributes?: Array<AttributeProps>;
+  vertex?: string;
+  fragment?: string;
+  geometry?: GeometryProps;
+  mode?: number;
+  modifiers?: object;
+  multiplier?: number;
+  uniforms: {
+    [key: string]: UniformProps;
+  };
+}
+```
+
+<ResponseField name="attributes" type="AttributeProps[]">
+  Custom vertex attributes for per-particle data. See [AttributeProps](#attributeprops).
+</ResponseField>
+
+<ResponseField name="vertex" type="string">
+  GLSL vertex shader source code.
+</ResponseField>
+
+<ResponseField name="fragment" type="string">
+  GLSL fragment shader source code.
+</ResponseField>
+
+<ResponseField name="geometry" type="GeometryProps">
+  Base geometry for each particle. See [GeometryProps](#geometryprops).
+</ResponseField>
+
+<ResponseField name="mode" type="number">
+  WebGL drawing mode. `0` for `POINTS`, `4` for `TRIANGLES`, etc. Defaults to `0`.
+</ResponseField>
+
+<ResponseField name="modifiers" type="object">
+  Functions that modify attribute values. Keys are attribute names, values are modifier functions.
+</ResponseField>
+
+<ResponseField name="multiplier" type="number">
+  Number of times to repeat the geometry (i.e., number of particles). Defaults to `1`.
+</ResponseField>
+
+<ResponseField name="uniforms" type="{ [key: string]: UniformProps }" required>
+  Shader uniforms. This is the only required property. See [UniformProps](#uniformprops).
+</ResponseField>
+
+## AttributeProps
+
+Defines a custom vertex attribute.
+
+```typescript
+interface AttributeProps {
+  name: string;
+  size: number;
+  data?: any;
+}
+```
+
+<ResponseField name="name" type="string" required>
+  Attribute name as used in the vertex shader (e.g., `aOffset`, `aVelocity`).
+</ResponseField>
+
+<ResponseField name="size" type="number" required>
+  Number of components per attribute. Use `1` for float, `2` for vec2, `3` for vec3, `4` for vec4.
+</ResponseField>
+
+<ResponseField name="data" type="(index: number, total: number) => number[]">
+  Optional function that returns attribute data for each particle. Called once per particle with the particle index and total count.
+</ResponseField>
+
+### Usage
+
+```typescript
+const offsetAttribute: AttributeProps = {
+  name: 'aOffset',
+  size: 3,
+  data: (i, total) => [
+    Math.random() * 2 - 1,
+    Math.random() * 2 - 1,
+    Math.random() * 2 - 1,
+  ],
+};
+```
+
+## UniformProps
+
+Defines a shader uniform.
+
+```typescript
+interface UniformProps {
+  type: string;
+  value: Array<number>;
+  location?: WebGLUniformLocation;
+}
+```
+
+<ResponseField name="type" type="string" required>
+  Uniform type. Supported types: `'float'`, `'vec2'`, `'vec3'`, `'vec4'`, `'mat2'`, `'mat3'`, `'mat4'`.
+</ResponseField>
+
+<ResponseField name="value" type="number[]" required>
+  Uniform value as an array of numbers. Length must match the type (1 for float, 2 for vec2, 3 for vec3, etc.).
+</ResponseField>
+
+<ResponseField name="location" type="WebGLUniformLocation">
+  WebGL uniform location. This is set automatically by Phenomenon—you don't need to provide it.
+</ResponseField>
+
+### Usage
+
+```typescript
+const timeUniform: UniformProps = {
+  type: 'float',
+  value: [0],
+};
+
+const colorUniform: UniformProps = {
+  type: 'vec3',
+  value: [1, 0.5, 0],
+};
+
+const matrixUniform: UniformProps = {
+  type: 'mat4',
+  value: [
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  ],
+};
+```
+
+## GeometryProps
+
+Defines the base geometry for particles.
+
+```typescript
+interface GeometryProps {
+  vertices?: Array<Array<object>>;
+  normal?: Array<Array<object>>;
+}
+```
+
+<ResponseField name="vertices" type="Array<{ x: number; y: number; z: number }>">
+  Array of vertex positions. Each object must have `x`, `y`, and `z` properties. If provided, an `aPosition` attribute is automatically created.
+</ResponseField>
+
+<ResponseField name="normal" type="Array<{ x: number; y: number; z: number }>">
+  Array of vertex normals. Each object must have `x`, `y`, and `z` properties. If provided, an `aNormal` attribute is automatically created.
+</ResponseField>
+
+### Usage
+
+```typescript
+// Single point (default)
+const pointGeometry: GeometryProps = {
+  vertices: [{ x: 0, y: 0, z: 0 }],
+};
+
+// Triangle with normals
+const triangleGeometry: GeometryProps = {
+  vertices: [
+    { x: 0, y: 0.1, z: 0 },
+    { x: -0.1, y: -0.1, z: 0 },
+    { x: 0.1, y: -0.1, z: 0 },
+  ],
+  normal: [
+    { x: 0, y: 0, z: 1 },
+    { x: 0, y: 0, z: 1 },
+    { x: 0, y: 0, z: 1 },
+  ],
+};
+```
+
+## BufferProps
+
+Internal type representing a WebGL buffer. You typically don't create these directly.
+
+```typescript
+interface BufferProps {
+  location: number;
+  buffer: WebGLBuffer;
+  size: number;
+}
+```
+
+<ResponseField name="location" type="number">
+  The attribute location in the shader program.
+</ResponseField>
+
+<ResponseField name="buffer" type="WebGLBuffer">
+  The WebGL buffer object.
+</ResponseField>
+
+<ResponseField name="size" type="number">
+  Number of components per vertex (1, 2, 3, or 4).
+</ResponseField>
+
+## Type Usage Example
+
+Here's a complete example using TypeScript types:
+
+```typescript
+import Renderer, { RendererProps, InstanceProps, AttributeProps, UniformProps } from 'phenomenon';
+
+// Typed renderer configuration
+const rendererProps: RendererProps = {
+  canvas: document.querySelector('#canvas') as HTMLCanvasElement,
+  settings: {
+    devicePixelRatio: window.devicePixelRatio,
+    clearColor: [0, 0, 0, 1],
+  },
+  debug: true,
+};
+
+const renderer = new Renderer(rendererProps);
+
+// Typed instance configuration
+const instanceProps: InstanceProps = {
+  vertex: `
+    attribute vec3 aPosition;
+    attribute vec3 aOffset;
+    
+    uniform mat4 uProjectionMatrix;
+    uniform mat4 uModelMatrix;
+    uniform mat4 uViewMatrix;
+    
+    void main() {
+      vec3 position = aPosition + aOffset;
+      gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(position, 1.0);
+      gl_PointSize = 2.0;
+    }
+  `,
+  fragment: `
+    precision mediump float;
+    
+    void main() {
+      gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+    }
+  `,
+  uniforms: {
+    uTime: {
+      type: 'float',
+      value: [0],
+    },
+  },
+  attributes: [
+    {
+      name: 'aOffset',
+      size: 3,
+      data: (i, total) => [
+        Math.random() * 2 - 1,
+        Math.random() * 2 - 1,
+        Math.random() * 2 - 1,
+      ],
+    },
+  ],
+  multiplier: 5000,
+  mode: 0,
+};
+
+const instance = renderer.add('particles', instanceProps);
+
+// Type-safe uniform updates
+instance.onRender = (instance) => {
+  const timeUniform = instance.uniforms.uTime as UniformProps;
+  timeUniform.value[0] += 0.01;
+};
+```

@@ -1,80 +1,280 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Create your first particle system with Phenomenon in minutes
 ---
 
-## Get started in three steps
+# Quickstart
 
-Get your documentation site running locally and make your first customization.
+This guide will walk you through creating your first working particle system with Phenomenon. You'll learn how to set up the renderer, define particle attributes, write shaders, and render thousands of particles to the screen.
 
-### Step 1: Set up your local environment
+## Prerequisites
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+Make sure you have:
+- Phenomenon installed ([see installation guide](/installation))
+- A `<canvas>` element in your HTML
+- Basic understanding of JavaScript
 
-### Step 2: Deploy your changes
+<Note>
+  No prior WebGL or shader experience is required - we'll explain each step.
+</Note>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+## Create your first particle system
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+<Steps>
+  <Step title="Import Phenomenon">
+    First, import the library into your JavaScript file:
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```javascript
+    import Phenomenon from 'phenomenon';
+    ```
+  </Step>
 
-### Step 3: Go live
+  <Step title="Create the renderer">
+    Initialize a Phenomenon instance. This sets up the WebGL context and rendering loop:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    ```javascript
+    const phenomenon = new Phenomenon({
+      settings: {
+        devicePixelRatio: 1,
+        position: { x: 0, y: 0, z: 3 },
+      },
+    });
+    ```
+
+    **What's happening here:**
+    - `devicePixelRatio: 1` sets the rendering resolution (1 for better performance, `window.devicePixelRatio` for sharper quality)
+    - `position` sets the camera's position in 3D space (z: 3 moves the camera back so you can see the particles)
+  </Step>
+
+  <Step title="Define particle attributes">
+    Attributes define the data for each particle. Each attribute needs a name (used in shaders), size (number of values), and a data function:
+
+    ```javascript
+    const attributes = [
+      {
+        name: 'aPositionStart',
+        data: () => [
+          Math.random() - 0.5,
+          Math.random() - 0.5,
+          Math.random() - 0.5,
+        ],
+        size: 3,
+      },
+      {
+        name: 'aColor',
+        data: () => [Math.random(), Math.random(), Math.random()],
+        size: 3,
+      },
+    ];
+    ```
+
+    **What's happening here:**
+    - `aPositionStart` gives each particle a random 3D position (x, y, z) centered around the origin
+    - `aColor` assigns each particle a random RGB color
+    - The `data` function is called once per particle to generate unique values
+  </Step>
+
+  <Step title="Write the vertex shader">
+    The vertex shader positions each particle in 3D space:
+
+    ```javascript
+    const vertex = `
+      attribute vec3 aPositionStart;
+      attribute vec3 aPosition;
+      attribute vec3 aColor;
+
+      uniform mat4 uProjectionMatrix;
+      uniform mat4 uModelMatrix;
+      uniform mat4 uViewMatrix;
+
+      varying vec3 vColor;
+
+      void main(){
+        gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(aPositionStart + aPosition, 1.0);
+        gl_PointSize = 2.0;
+        vColor = aColor;
+      }
+    `;
+    ```
+
+    **What's happening here:**
+    - `attribute` variables receive per-particle data from our attributes array
+    - `uniform` variables are the same for all particles (projection, model, view matrices handle camera positioning)
+    - `varying` variables pass data to the fragment shader
+    - `gl_Position` sets where the particle appears on screen
+    - `gl_PointSize` controls how large each particle is (in pixels)
+  </Step>
+
+  <Step title="Write the fragment shader">
+    The fragment shader colors each particle:
+
+    ```javascript
+    const fragment = `
+      precision mediump float;
+
+      varying vec3 vColor;
+
+      void main(){
+        gl_FragColor = vec4(vColor, 1.0);
+      }
+    `;
+    ```
+
+    **What's happening here:**
+    - `varying vec3 vColor` receives the color from the vertex shader
+    - `gl_FragColor` sets the final pixel color (RGB + alpha)
+  </Step>
+
+  <Step title="Add the particle system">
+    Now combine everything and add it to the renderer:
+
+    ```javascript
+    phenomenon.add('particles', {
+      attributes,
+      vertex,
+      fragment,
+      multiplier: 10000,
+    });
+    ```
+
+    **What's happening here:**
+    - `'particles'` is a unique identifier for this instance
+    - `multiplier: 10000` creates 10,000 particles (the data function runs 10,000 times)
+    - Phenomenon automatically starts rendering
+  </Step>
+</Steps>
+
+## Complete example
+
+Here's the full code put together:
+
+```javascript
+import Phenomenon from 'phenomenon';
+
+// Create the renderer
+const phenomenon = new Phenomenon({
+  settings: {
+    devicePixelRatio: 1,
+    position: { x: 0, y: 0, z: 3 },
+  },
+});
+
+// Define particle attributes
+const attributes = [
+  {
+    name: 'aPositionStart',
+    data: () => [
+      Math.random() - 0.5,
+      Math.random() - 0.5,
+      Math.random() - 0.5,
+    ],
+    size: 3,
+  },
+  {
+    name: 'aColor',
+    data: () => [Math.random(), Math.random(), Math.random()],
+    size: 3,
+  },
+];
+
+// Vertex shader
+const vertex = `
+  attribute vec3 aPositionStart;
+  attribute vec3 aPosition;
+  attribute vec3 aColor;
+
+  uniform mat4 uProjectionMatrix;
+  uniform mat4 uModelMatrix;
+  uniform mat4 uViewMatrix;
+
+  varying vec3 vColor;
+
+  void main(){
+    gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(aPositionStart + aPosition, 1.0);
+    gl_PointSize = 2.0;
+    vColor = aColor;
+  }
+`;
+
+// Fragment shader
+const fragment = `
+  precision mediump float;
+
+  varying vec3 vColor;
+
+  void main(){
+    gl_FragColor = vec4(vColor, 1.0);
+  }
+`;
+
+// Add particle system to renderer
+phenomenon.add('particles', {
+  attributes,
+  vertex,
+  fragment,
+  multiplier: 10000,
+});
+```
+
+<Tip>
+  Open your browser's developer console to check for WebGL errors if you don't see any particles.
+</Tip>
+
+## Adding animation
+
+To make your particles move, add an `onRender` hook and use uniforms:
+
+```javascript
+const uniforms = {
+  uTime: {
+    type: 'float',
+    value: 0.0,
+  },
+};
+
+phenomenon.add('particles', {
+  attributes,
+  vertex: `
+    attribute vec3 aPositionStart;
+    attribute vec3 aPosition;
+    uniform float uTime;
+    uniform mat4 uProjectionMatrix;
+    uniform mat4 uModelMatrix;
+    uniform mat4 uViewMatrix;
+
+    void main(){
+      vec3 pos = aPositionStart + aPosition;
+      pos.y += sin(uTime + aPositionStart.x * 3.0) * 0.1;
+      gl_Position = uProjectionMatrix * uModelMatrix * uViewMatrix * vec4(pos, 1.0);
+      gl_PointSize = 2.0;
+    }
+  `,
+  fragment,
+  uniforms,
+  multiplier: 10000,
+  onRender: (instance) => {
+    instance.uniforms.uTime.value += 0.01;
+  },
+});
+```
+
+Now your particles will wave up and down!
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
+You've created your first particle system! Here's what to explore next:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="API Reference" icon="book" href="/api/renderer">
+    Learn about all available options and methods
+  </Card>
+  <Card title="Examples" icon="stars" href="/examples/overview">
+    Browse more complex particle effects and techniques
+  </Card>
+  <Card title="Shaders Guide" icon="wand-magic-sparkles" href="/concepts/shaders">
+    Deep dive into writing custom vertex and fragment shaders
+  </Card>
+  <Card title="Performance Tips" icon="gauge-high" href="/guides/performance">
+    Optimize your particle systems for maximum FPS
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
