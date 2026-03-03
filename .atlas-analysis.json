@@ -1,0 +1,86 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Phenomenon",
+  "projectDescription": "A fast 2kB low-level WebGL API for high-performance particle rendering.",
+  "theme": "aspen",
+  "primaryColor": "#FF6C00",
+  "lightColor": "#1DE5B6",
+  "darkColor": "#536DFE",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/renderer",
+              "concepts/instances",
+              "concepts/attributes-uniforms",
+              "concepts/shaders"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/creating-particles",
+              "guides/custom-shaders",
+              "guides/dynamic-attributes",
+              "guides/performance"
+            ]
+          },
+          {
+            "group": "Examples",
+            "pages": [
+              "examples/overview",
+              "examples/basic-particles",
+              "examples/transitions",
+              "examples/shapes"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "API",
+            "pages": [
+              "api/renderer",
+              "api/instance",
+              "api/types"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "GPU-based particle rendering with millions of particles",
+    "Low-level WebGL API with zero dependencies",
+    "Custom vertex and fragment shader support",
+    "Dynamic attribute and uniform management",
+    "Multiple instance management",
+    "Tiny bundle size (~2kB gzipped)"
+  ],
+  "publicApiSurface": [
+    "Renderer (default export)",
+    "Renderer.add(key, settings)",
+    "Renderer.remove(key)",
+    "Renderer.resize()",
+    "Renderer.toggle(shouldRender)",
+    "Renderer.destroy()",
+    "Instance.prepareAttribute(attribute)",
+    "Instance.prepareBuffer(attribute)",
+    "Instance.render(renderUniforms)",
+    "Instance.destroy()"
+  ]
+}
