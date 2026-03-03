@@ -53,6 +53,18 @@ new Renderer(props?: RendererProps)
           Callback invoked once before the first render. Use this to modify the WebGL context.
         </ParamField>
 
+        <ParamField path="shouldRender" type="boolean" default="true">
+          Whether the scene should start rendering automatically. Set to `false` to manually control rendering.
+        </ParamField>
+
+        <ParamField path="uniforms" type="object" default="{}">
+          Shared uniforms available to all instances. By default includes `uProjectionMatrix`, `uModelMatrix`, and `uViewMatrix`.
+        </ParamField>
+
+        <ParamField path="onSetup" type="(gl: WebGLRenderingContext) => void">
+          Callback invoked once before the first render. Use this to modify the WebGL context.
+        </ParamField>
+
         <ParamField path="onRender" type="(renderer: Renderer) => void">
           Callback invoked on every frame after all instances have rendered.
         </ParamField>

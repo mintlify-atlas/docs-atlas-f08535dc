@@ -86,8 +86,12 @@ interface InstanceProps {
   Number of times to repeat the geometry (i.e., number of particles). Defaults to `1`.
 </ResponseField>
 
-<ResponseField name="uniforms" type="{ [key: string]: UniformProps }" required>
-  Shader uniforms. This is the only required property. See [UniformProps](#uniformprops).
+<ResponseField name="uniforms" type="{ [key: string]: UniformProps }">
+  Shader uniforms. Defaults to an empty object if not provided. See [UniformProps](#uniformprops).
+</ResponseField>
+
+<ResponseField name="onRender" type="(instance: Instance) => void">
+  Optional callback invoked after each frame. Use this to update uniforms or perform instance-specific calculations.
 </ResponseField>
 
 ## AttributeProps
@@ -247,22 +251,20 @@ interface BufferProps {
 Here's a complete example using TypeScript types:
 
 ```typescript
-import Renderer, { RendererProps, InstanceProps, AttributeProps, UniformProps } from 'phenomenon';
+import Renderer from 'phenomenon';
 
-// Typed renderer configuration
-const rendererProps: RendererProps = {
+// Renderer configuration
+const renderer = new Renderer({
   canvas: document.querySelector('#canvas') as HTMLCanvasElement,
   settings: {
     devicePixelRatio: window.devicePixelRatio,
     clearColor: [0, 0, 0, 1],
   },
   debug: true,
-};
+});
 
-const renderer = new Renderer(rendererProps);
-
-// Typed instance configuration
-const instanceProps: InstanceProps = {
+// Instance configuration
+const instance = renderer.add('particles', {
   vertex: `
     attribute vec3 aPosition;
     attribute vec3 aOffset;
@@ -303,13 +305,8 @@ const instanceProps: InstanceProps = {
   ],
   multiplier: 5000,
   mode: 0,
-};
-
-const instance = renderer.add('particles', instanceProps);
-
-// Type-safe uniform updates
-instance.onRender = (instance) => {
-  const timeUniform = instance.uniforms.uTime as UniformProps;
-  timeUniform.value[0] += 0.01;
-};
+  onRender: (instance) => {
+    instance.uniforms.uTime.value[0] += 0.01;
+  },
+});
 ```

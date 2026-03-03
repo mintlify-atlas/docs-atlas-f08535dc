@@ -49,7 +49,7 @@ void main() {
 
 ### uniforms
 
-<ParamField path="uniforms" type="{ [key: string]: UniformProps }" required>
+<ParamField path="uniforms" type="{ [key: string]: UniformProps }" default="{}">
   Custom uniforms to pass to the shaders. The renderer automatically provides `uProjectionMatrix`, `uModelMatrix`, and `uViewMatrix`.
 </ParamField>
 
@@ -172,6 +172,23 @@ mode: 0
 
 // Triangles
 mode: 4
+```
+
+### onRender
+
+<ParamField path="onRender" type="(instance: Instance) => void">
+  Optional callback invoked after each frame is rendered. Use this to update uniforms or perform per-frame calculations for this specific instance.
+</ParamField>
+
+#### Example
+
+```javascript
+renderer.add('particles', {
+  // ... other settings
+  onRender: (instance) => {
+    instance.uniforms.uTime.value[0] += 0.01;
+  },
+});
 ```
 
 ### modifiers
